@@ -1,0 +1,100 @@
+{
+  "name": "SRT / Remedy",
+  "source_id": 0,
+  "enabled": false,
+  "definition": {
+    "version": 1,
+    "filter": {
+      "mode": "all",
+      "conditions": [
+        {
+          "field": "from",
+          "operator": "equals",
+          "value": "DA_CONFIGURARE",
+          "ignore_case": true
+        },
+        {
+          "field": "body",
+          "operator": "regex",
+          "value": "(?m)^[ \\t]*Gruppo:[ \\t]*AS[ \\t]*-[ \\t]*SRT[ \\t\\r]*$",
+          "ignore_case": true
+        }
+      ]
+    },
+    "extractors": [
+      {
+        "name": "task_id",
+        "source": "body",
+        "pattern": "\\b(TAS[0-9]+)\\b",
+        "required": true
+      },
+      {
+        "name": "incident_id",
+        "source": "body",
+        "pattern": "(?m)^[ \\t]*Origine richiesta:[ \\t]*(INC[0-9]+)\\b",
+        "required": false
+      },
+      {
+        "name": "summary",
+        "source": "body",
+        "pattern": "(?m)^[ \\t]*Riepilogo:[ \\t]*([^\\r\\n]+)",
+        "required": false
+      },
+      {
+        "name": "priority",
+        "source": "body",
+        "pattern": "(?m)^[ \\t]*Priorit[àa]:[ \\t]*([^\\r\\n]+)",
+        "required": false
+      },
+      {
+        "name": "support_group",
+        "source": "body",
+        "pattern": "(?m)^[ \\t]*Gruppo:[ \\t]*([^\\r\\n]+)",
+        "required": true
+      }
+    ],
+    "branches": [
+      {
+        "name": "SBC escluso",
+        "when": {
+          "mode": "all",
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "SBC",
+              "ignore_case": true
+            }
+          ]
+        },
+        "actions": [
+          {
+            "kind": "ignore",
+            "connection_id": 0,
+            "reason": "Ramo SBC dismesso"
+          }
+        ]
+      },
+      {
+        "name": "Segnalazione SRT",
+        "when": {
+          "mode": "all",
+          "conditions": []
+        },
+        "actions": [
+          {
+            "kind": "jira",
+            "connection_id": 0,
+            "project": "DA_CONFIGURARE",
+            "board_id": 0,
+            "issue_type": "DA_CONFIGURARE",
+            "reporter": "DA_CONFIGURARE",
+            "subject": "{{ .subject }}",
+            "body": "{{ .body }}",
+            "fields": []
+          }
+        ]
+      }
+    ]
+  }
+}

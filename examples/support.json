@@ -1,0 +1,44 @@
+{
+  "name": "Support KR",
+  "source_id": 0,
+  "enabled": false,
+  "definition": {
+    "version": 1,
+    "filter": {
+      "mode": "all",
+      "conditions": [
+        {
+          "field": "from",
+          "operator": "contains",
+          "value": "jira",
+          "ignore_case": true,
+          "not": true
+        }
+      ]
+    },
+    "extractors": [],
+    "branches": [
+      {
+        "name": "Segnalazione Support KR",
+        "when": {
+          "mode": "all",
+          "conditions": []
+        },
+        "actions": [
+          {
+            "kind": "slack",
+            "connection_id": 0,
+            "list_id": "DA_CONFIGURARE",
+            "fields": [
+              {
+                "field": "DA_CONFIGURARE",
+                "type": "text",
+                "value": "{{ .subject }}"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

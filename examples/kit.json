@@ -1,0 +1,142 @@
+{
+  "name": "key2help",
+  "source_id": 0,
+  "enabled": false,
+  "definition": {
+    "version": 1,
+    "filter": {
+      "mode": "all",
+      "conditions": [
+        {
+          "field": "from",
+          "operator": "equals",
+          "value": "DA_CONFIGURARE",
+          "ignore_case": true
+        },
+        {
+          "field": "body",
+          "operator": "regex",
+          "value": "(?im)^[ \\t]*Ticket in k(?:ey|y)2help:[ \\t]*[A-Z][A-Z0-9]*-[0-9]+\\b",
+          "ignore_case": true
+        }
+      ]
+    },
+    "extractors": [
+      {
+        "name": "reference",
+        "source": "body",
+        "pattern": "(?im)^[ \\t]*Ticket in k(?:ey|y)2help:[ \\t]*([A-Z][A-Z0-9]*-[0-9]+)\\b",
+        "required": true
+      },
+      {
+        "name": "project",
+        "source": "body",
+        "pattern": "(?s)Il Task\\s*\\(.*?\\)\\s*[“\"]([^”\"]+)[”\"]",
+        "required": true
+      },
+      {
+        "name": "summary",
+        "source": "body",
+        "pattern": "(?s)Il Task\\s*\\((.*?)\\)\\s*[“\"]",
+        "required": true
+      },
+      {
+        "name": "service",
+        "source": "body",
+        "pattern": "(?m)^[ \\t]*Servizio principale:[ \\t]*([^\\r\\n]+)",
+        "required": false
+      },
+      {
+        "name": "support_group",
+        "source": "body",
+        "pattern": "(?m)^[ \\t]*Gruppo:[ \\t]*([^\\r\\n]+)",
+        "required": false
+      },
+      {
+        "name": "ticket_url",
+        "source": "body",
+        "pattern": "(?i)Accedi\\s+al\\s+ticket\\s*\\((https?://[^\\s)]+)\\)",
+        "required": false
+      }
+    ],
+    "branches": [
+      {
+        "name": "Workflow",
+        "when": {
+          "mode": "all",
+          "conditions": [
+            {
+              "field": "project",
+              "operator": "prefix",
+              "value": "DA_CONFIGURARE",
+              "ignore_case": true
+            }
+          ]
+        },
+        "actions": [
+          {
+            "kind": "slack",
+            "connection_id": 0,
+            "list_id": "DA_CONFIGURARE",
+            "fields": [
+              {
+                "field": "DA_CONFIGURARE",
+                "type": "text",
+                "value": "{{ .reference }} · {{ .summary }}"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Orbeon",
+        "when": {
+          "mode": "all",
+          "conditions": [
+            {
+              "field": "project",
+              "operator": "prefix",
+              "value": "DA_CONFIGURARE",
+              "ignore_case": true
+            }
+          ]
+        },
+        "actions": [
+          {
+            "kind": "slack",
+            "connection_id": 0,
+            "list_id": "DA_CONFIGURARE",
+            "fields": [
+              {
+                "field": "DA_CONFIGURARE",
+                "type": "text",
+                "value": "{{ .reference }} · {{ .summary }}"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Call Foundation",
+        "when": {
+          "mode": "all",
+          "conditions": []
+        },
+        "actions": [
+          {
+            "kind": "slack",
+            "connection_id": 0,
+            "list_id": "DA_CONFIGURARE",
+            "fields": [
+              {
+                "field": "DA_CONFIGURARE",
+                "type": "text",
+                "value": "{{ .reference }} · {{ .summary }}"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,46 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: automations
+          POSTGRES_PASSWORD: integration-only
+          POSTGRES_DB: automations_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U automations -d automations_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgres://automations:integration-only@localhost:5432/automations_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make verify
+      - name: Check generated files
+        run: git diff --exit-code -- ent internal/views/app_templ.go
+      - name: Check Compose configuration
+        env:
+          APP_BASE_URL: https://automations.example.test
+          GOOGLE_CLIENT_ID: ci-client
+          AUTH_ALLOWED_DOMAINS: example.test
+          ADMIN_EMAILS: admin@example.test
+        run: |
+          docker compose config --quiet
+          docker compose -f compose.yaml -f compose.jev.yaml config --quiet
+      - name: Build container
+        run: docker build -t zupit-automations:ci .

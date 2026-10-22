@@ -1,0 +1,91 @@
+name: zupit-automations
+
+x-image: &image
+  image: ${AUTOMATIONS_IMAGE:-zupit-automations:local}
+  build: .
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: automations
+      POSTGRES_USER: automations
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automations -d automations"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  migrate:
+    <<: *image
+    command: ["/app/migrate"]
+    restart: "no"
+    read_only: true
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url
+    secrets:
+      - database_url
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    <<: *image
+    restart: unless-stopped
+    read_only: true
+    stop_grace_period: 60s
+    environment:
+      ADDR: :8080
+      APP_ENV: ${APP_ENV:-production}
+      APP_BASE_URL: ${APP_BASE_URL:?Impostare APP_BASE_URL}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Impostare GOOGLE_CLIENT_ID}
+      AUTH_ALLOWED_DOMAINS: ${AUTH_ALLOWED_DOMAINS:?Impostare AUTH_ALLOWED_DOMAINS}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:?Impostare ADMIN_EMAILS}
+      DATABASE_URL_FILE: /run/secrets/database_url
+      GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
+      CSRF_SECRET_FILE: /run/secrets/csrf_secret
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google_credentials
+      TZ: ${TZ:-Europe/Rome}
+    secrets:
+      - database_url
+      - google_client_secret
+      - csrf_secret
+      - encryption_key
+      - google_credentials
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health/ready"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 45s
+
+volumes:
+  postgres_data:
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  database_url:
+    file: ./secrets/database_url
+  google_client_secret:
+    file: ./secrets/google_client_secret
+  csrf_secret:
+    file: ./secrets/csrf_secret
+  encryption_key:
+    file: ./secrets/encryption_key
+  google_credentials:
+    file: ./secrets/google_credentials.json

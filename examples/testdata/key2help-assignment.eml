@@ -1,0 +1,33 @@
+From: key2help <fixture@example.test>
+To: team@example.test
+Subject: Esempio key2help - oggetto sintetico
+Content-Type: text/plain; charset=UTF-8
+
+Task
+SR-123827
+assegnato
+Il Task (verifica oggetto protocolli in errore)
+“PGD - Configurazioni Digit_R35_R7”
+è stato assegnato al tuo gruppo di supporto
+
+ Accedi al ticket
+SR-123827
+Info
+Ticket creato il: 01/07/2026 12:16
+
+Ticket in ky2help: SR-123827
+
+Descrizione della richiesta
+Si tratta di un unico procedimento sul Front END (1 unico serviceUID) che è poi gestito da 4 uffici differenti.
+Se può essere utile un confronto, una situazione simile è stata creata per il procedimento Apprendisti.
+
+I 4 file di configurazione sono presenti nella cartella SP:
+https://documents.example.test/configurazione
+
+Dettagli dell’assegnazione
+Servizio principale: E-Service [PGD - SAP CRM]
+
+Priorità: Medium
+Scadenza: 15/07/2026 09:45
+Gruppo: SIAG - PAB Foundation
+Utente: Without user

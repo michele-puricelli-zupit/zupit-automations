@@ -1,0 +1,764 @@
+package views
+
+import "github.com/zupit-it/zupit-automations/internal/model"
+
+templ Page(d Data) {
+
+	<!DOCTYPE html>
+	<html lang="it">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="htmx-config" content={ `{"includeIndicatorStyles":false,"allowEval":false}` }/>
+			<title>{ d.Title } · Zupit Automazioni</title>
+			<link rel="stylesheet" href="/static/app.css"/>
+			<script src="/static/htmx.min.js" defer>
+</script>
+		</head>
+		<body>
+			<a href="#main" class="skip">Vai al contenuto</a>
+			if d.User.ID == 0 {
+
+				<main id="main" class="login-wrap">
+					<div class="login-card">
+<span class="brand-mark">Z</span>
+<p class="eyebrow">ZUPIT · STRUMENTI DI TEAM</p>
+<h1>La posta arriva.<br/>Il lavoro prosegue.</h1>
+<p class="muted">Gmail, Jira e Slack in un unico flusso.<br/>Accedi con il tuo account Google aziendale.</p>
+<a class="button primary login-button" href="/auth/login">Accedi con Google <span aria-hidden="true">↗</span>
+</a>
+<p class="fine">Accesso riservato ai domini Workspace autorizzati.</p>
+</div>
+				</main>
+			} else {
+
+				<div class="shell">
+					<aside class="sidebar">
+<a class="brand" href="/flows">
+<span class="brand-mark">Z</span>
+<span>Zupit<small>Automazioni</small>
+</span>
+</a>
+<p class="nav-label">WORKSPACE</p>
+<nav aria-label="Navigazione principale">
+						<a class={ navClass(d.Active, "flows")
+} href="/flows">
+<span aria-hidden="true">⇄</span> Flussi</a>
+						<a class={ navClass(d.Active, "connections")
+} href="/connections">
+<span aria-hidden="true">⌁</span> Connessioni</a>
+						<a class={ navClass(d.Active, "runs")
+} href="/runs">
+<span aria-hidden="true">≡</span> Esecuzioni</a>
+					</nav>
+<div class="sidebar-note">
+<span class="live-dot">
+</span> Ricezione a eventi<p>Gmail → Jira / Slack</p>
+</div>
+<div class="profile">
+<span class="avatar">{ initial(d.User.Name)
+}</span>
+<div>
+<strong>{ d.User.Name }</strong>
+<small>
+if d.User.Admin {
+<span>Amministratore</span>
+} else {
+<span>Sola lettura</span>
+}</small>
+</div>
+</div>
+<form method="post" action="/auth/logout">
+<input type="hidden" name="_csrf" value={ d.CSRF }/>
+<button class="logout" type="submit">Esci dall’account</button>
+</form>
+</aside>
+					<main id="main" class="workspace">
+<header class="topbar">
+<span>Strumenti di team <span class="divider">/</span> { d.Title }</span>
+<span class="fine">{ d.User.Email }</span>
+</header>
+<div class="content">
+						@Feedback(d)
+						switch d.Active {
+
+							case "connections":
+								if d.Connection.Provider != "" {
+ @ConnectionForm(d)
+} else {
+ @Connections(d)
+}
+							case "editor":
+								@FlowEditor(d)
+							case "simulate":
+								@Simulation(d)
+							case "runs":
+								if d.Run.ID != 0 {
+ @RunDetail(d)
+} else {
+ @Runs(d)
+}
+							default:
+								@Flows(d)
+							}
+						</div>
+<footer class="footer">Zupit Automazioni <span>Elaborazioni tracciate, dati nei servizi del team.</span>
+</footer>
+</main>
+				</div>
+			}
+		</body>
+	</html>
+}
+
+func navClass(active, name string) string { if active == name || (name == "flows" && (active == "editor" || active == "simulate")) { return "nav-active" }; return "" }
+func initial(name string) string { for _, r := range name { return string(r) }; return "U" }
+
+templ Feedback(d Data) {
+
+	if d.Error != "" {
+ <div class="alert error" role="alert">{ d.Error }</div>
+}
+	if d.Notice != "" {
+ <div class="alert success" role="status">{ d.Notice }</div>
+}
+}
+templ Badge(value string) {
+ <span class={ "badge " + value }>{ status(value)
+}</span>
+}
+templ Heading(label, title, description string) {
+ <div class="heading">
+<div>
+<p class="eyebrow">{ label }</p>
+<h1>{ title }</h1>
+<p class="muted">{ description }</p>
+</div>{ children... }</div>
+}
+templ CSRF(token string) {
+ <input type="hidden" name="_csrf" value={ token }/>
+}
+
+templ Flows(d Data) {
+
+	@Heading("IL LAVORO, IN AUTOMATICO", "Flussi", "Dall’email all’azione giusta. Ogni passaggio resta tracciato.") {
+
+		if d.User.Admin {
+ <a class="button primary" href="/flows/new">＋ Nuovo flusso</a>
+}
+	}
+	if d.User.Admin {
+		<div class="preset-links"><span>Parti da un modello da completare:</span><a href="/flows/new?template=srt">SRT / Remedy</a><a href="/flows/new?template=cup">CUP</a><a href="/flows/new?template=kit">key2help</a><a href="/flows/new?template=support">Support KR</a></div>
+	}
+	<div class="stats">
+<div>
+<span>FLUSSI CONFIGURATI</span>
+<strong>{ ID(len(d.Flows))
+}</strong>
+</div>
+<div>
+<span>FLUSSI ATTIVI</span>
+<strong>{ ID(enabledCount(d.Flows))
+}</strong>
+</div>
+<div>
+<span>CONNESSIONI PRONTE</span>
+<strong>{ ID(readyCount(d.Connections))
+}</strong>
+</div>
+</div>
+	if len(d.Flows) == 0 {
+
+		<div class="empty panel">
+<span class="empty-icon" aria-hidden="true">⇄</span>
+<h2>Il primo flusso parte da una casella</h2>
+<p>Collega Gmail, configura una destinazione e definisci quali email elaborare.</p>
+<div class="steps">
+<span>1. Connessioni</span>
+<span>2. Condizioni e azioni</span>
+<span>3. Simula e attiva</span>
+</div>
+<a class="button secondary" href="/connections">Vai alle connessioni</a>
+</div>
+	} else {
+
+		<div class="panel table-wrap">
+<table>
+<thead>
+<tr>
+<th>Flusso</th>
+<th>Sorgente</th>
+<th>Stato</th>
+<th>Azioni</th>
+</tr>
+</thead>
+<tbody>
+for _, f := range d.Flows {
+ <tr>
+<td>
+<strong>{ f.Name }</strong>
+<small>{ ID(len(f.Definition.Branches))
+} rami · { ID(len(f.Definition.Extractors))
+} estrazioni</small>
+if f.Definition.Comparison != nil {
+<small>A standard + B Jev · confronto in DM</small>
+}
+</td>
+<td>{ sourceName(f.SourceID, d.Connections)
+}</td>
+<td>
+if f.Enabled {
+<span class="badge ready">Attivo</span>
+} else {
+<span class="badge">Disattivato</span>
+}</td>
+<td>
+<div class="row-actions">
+if d.User.Admin {
+<a href={ templ.SafeURL(path("/flows/", f.ID))
+}>Modifica</a>
+<a href={ templ.SafeURL(path("/flows/", f.ID)+"/simulate")
+}>Simula</a>
+<form method="post" action={ path("/flows/",f.ID)+"/toggle" }>
+@CSRF(d.CSRF)
+<button class="link" type="submit">
+if f.Enabled {
+<span>Disattiva</span>
+} else {
+<span>Attiva</span>
+}</button>
+</form>
+}</div>
+</td>
+</tr>
+}</tbody>
+</table>
+</div>
+	}
+	<p class="fine note">Ogni email può attivare più flussi. All’interno di un flusso viene eseguito il primo ramo corrispondente.</p>
+}
+func enabledCount(flows []model.Flow) int { n:=0;for _,f:=range flows{if f.Enabled{n++}};return n }
+func readyCount(connections []model.Connection) int { n:=0;for _,c:=range connections{if c.Status=="ready"{n++}};return n }
+
+templ Connections(d Data) {
+
+	@Heading("SERVIZI DEL TEAM", "Connessioni", "Account condivisi e destinazioni, separati dal tuo accesso personale.")
+	if d.User.Admin {
+ <div class="connect-options">
+<a href="/connections/new?provider=gmail">
+<span class="provider gmail">G</span>
+<strong>Collega Gmail</strong>
+<small>Casella Workspace e Pub/Sub</small>
+</a>
+<a href="/connections/new?provider=jira">
+<span class="provider jira">J</span>
+<strong>Collega Jira</strong>
+<small>Progetti e board del team</small>
+</a>
+<a href="/connections/new?provider=slack">
+<span class="provider slack">S</span>
+<strong>Collega Slack</strong>
+<small>Liste e avvisi operativi</small>
+</a>
+</div>
+}
+	if len(d.Connections) == 0 {
+ <div class="panel empty">
+<h2>Nessuna connessione configurata</h2>
+<p>Gmail riceve le email; Jira e Slack le trasformano in lavoro per il team.</p>
+</div>
+} else {
+
+		<div class="panel table-wrap">
+<table>
+<thead>
+<tr>
+<th>Connessione</th>
+<th>Servizio</th>
+<th>Stato</th>
+<th>Gestione</th>
+</tr>
+</thead>
+<tbody>
+for _, c := range d.Connections {
+<tr>
+<td>
+<strong>{ c.Name }</strong>
+if c.Error!="" {
+<small class="danger">{ c.Error }</small>
+}</td>
+<td>{ provider(c.Provider)
+}</td>
+<td>
+@Badge(c.Status)
+</td>
+<td>
+if d.User.Admin {
+<div class="row-actions">
+<a href={ templ.SafeURL(path("/connections/",c.ID))
+}>Configura</a>
+if c.Provider=="gmail" {
+<form method="post" action={ path("/connections/",c.ID)+"/authorize" }>
+@CSRF(d.CSRF)
+<button type="submit" class="link">Autorizza Google</button>
+</form>
+}<form method="post" action={ path("/connections/",c.ID)+"/verify" }>
+@CSRF(d.CSRF)
+<button type="submit" class="link">Verifica</button>
+</form>
+</div>
+}</td>
+</tr>
+}</tbody>
+</table>
+</div>
+	}
+	<p class="fine note">I segreti salvati non vengono mai mostrati. Per sostituirli, inserisci un nuovo valore.</p>
+}
+templ Input(name,label,value,kind string,required bool) {
+
+	<label class="field">
+<span>{ label }</span>
+<input name={ name } value={ value } type={ kind } required?={ required }/>
+</label>
+}
+templ Textarea(name,label,value string) {
+ <label class="field">
+<span>{ label }</span>
+<textarea name={ name } rows="4">{ value }</textarea>
+</label>
+}
+templ ConnectionForm(d Data) {
+
+	@Heading("CONFIGURAZIONE", "Connessione "+provider(d.Connection.Provider), "Le credenziali sono disponibili soltanto al servizio di elaborazione.") {
+<a class="button secondary" href="/connections">Torna alle connessioni</a>
+}
+	<form class="panel form-panel" method="post" action={ path("/connections/",d.Connection.ID)
+}>
+@CSRF(d.CSRF)
+<input type="hidden" name="provider" value={ d.Connection.Provider }/>
+		@Input("name","Nome della connessione",d.Connection.Name,"text",true)
+		if d.Connection.Provider=="gmail" {
+
+			@Input("email","Indirizzo della casella Workspace",d.Connection.Config["email"],"email",true)
+			@Input("topic","Topic Pub/Sub · projects/PROGETTO/topics/NOME",d.Connection.Config["topic"],"text",true)
+			@Input("subscription","Subscription · projects/PROGETTO/subscriptions/NOME",d.Connection.Config["subscription"],"text",true)
+			<p class="hint">Salva e poi autorizza Google scegliendo questa casella. Il server usa credenziali Google Cloud dedicate per ricevere gli eventi Pub/Sub.</p>
+		} else if d.Connection.Provider=="jira" {
+
+			@Input("url","URL Jira Cloud",d.Connection.Config["url"],"url",true)
+			@Input("email","Email dell’account tecnico",d.Connection.Config["email"],"email",true)
+			<label class="field">
+<span>Nuovo API token</span>
+<input type="password" name="token" autocomplete="new-password"/>
+<small>Lascia vuoto per mantenere il token esistente.</small>
+</label>
+		} else {
+
+			<label class="field">
+<span>Nuovo bot token Slack</span>
+<input type="password" name="token" autocomplete="new-password"/>
+<small>Lascia vuoto per mantenere il token esistente.</small>
+</label>
+			@Input("alert_channel","ID canale per gli avvisi operativi · facoltativo",d.Connection.Config["alert_channel"],"text",false)
+			<p class="hint">Il bot deve avere accesso alle liste e al canale operativo. Configura il canale avvisi su una sola connessione Slack.</p>
+		}
+		<div class="form-footer">
+<button class="button primary" type="submit">Salva connessione</button>
+<a href="/connections">Annulla</a>
+</div>
+	</form>
+}
+
+templ EditorButton(operation,label string) {
+
+	<button class="button small secondary" type="submit" name="operation" value={ operation } formaction="/flows/editor" formnovalidate hx-post="/flows/editor" hx-target="#flow-editor" hx-swap="outerHTML" hx-disabled-elt="this">{ label }</button>
+}
+templ FlowEditor(d Data) {
+
+	<form id="flow-editor" method="post" action={ path("/flows/",d.Flow.ID)
+}>
+		@CSRF(d.CSRF)
+<input type="hidden" name="id" value={ ID(d.Flow.ID)
+}/>
+		@Heading("REGOLE DEL FLUSSO", "Editor del flusso", "Scegli la sorgente, riconosci le email e definisci cosa deve accadere.") {
+<a href="/flows" class="button secondary">Annulla</a>
+<button class="button primary" type="submit">Salva flusso</button>
+}
+		@Feedback(d)
+		<section class="panel form-panel">
+<h2>
+<span class="section-number">1</span> Sorgente</h2>
+<div class="form-grid">
+@Input("name","Nome del flusso",d.Flow.Name,"text",true)
+<label class="field">
+<span>Connessione Gmail</span>
+<select name="source_id" required>
+<option value="">Scegli una casella</option>
+for _,c:=range d.Connections {
+if c.Provider=="gmail" {
+<option value={ ID(c.ID)
+} selected?={ c.ID==d.Flow.SourceID }>{ c.Name }</option>
+}
+}</select>
+</label>
+</div>
+<label class="check">
+<input name="enabled" type="checkbox" checked?={ d.Flow.Enabled }/> Attiva il flusso dopo il salvataggio e la verifica delle destinazioni</label>
+</section>
+		@ComparisonEditor(d)
+		<section class="panel form-panel">
+<h2>
+<span class="section-number">2</span> Email da elaborare</h2>
+<p class="hint">Nessuna condizione significa tutte le email della casella. Usa i filtri per evitare attivazioni indesiderate.</p>
+@ConditionGroup("filter",d.Flow.Definition.Filter,d.Flow.Definition.Extractors)
+@EditorButton("filter","＋ Condizione")
+</section>
+		<section class="panel form-panel">
+<h2>
+<span class="section-number">3</span> Dati da estrarre</h2>
+<p class="hint">Regex Go/RE2. La prima cattura diventa la variabile; i gruppi nominati sono disponibili con il proprio nome. Un pattern vuoto copia il campo.</p>
+			for i,e:=range d.Flow.Definition.Extractors {
+<div class="editor-row extract-row">
+@Input(key("extract",i,"name"),"Variabile",e.Name,"text",false)
+@FieldSelect(key("extract",i,"source"),"Campo sorgente",e.Source,nil)
+@Input(key("extract",i,"pattern"),"Espressione regolare",e.Pattern,"text",false)
+<label class="check">
+<input type="checkbox" name={ key("extract",i,"required")
+} checked?={ e.Required }/> Obbligatorio</label>
+@EditorButton(key("remove","extract",i),"Rimuovi")
+</div>
+}
+			@EditorButton("extract","＋ Estrazione")
+		</section>
+		<section class="panel form-panel">
+<h2>
+<span class="section-number">4</span> Rami e azioni</h2>
+<p class="hint">Si esegue il primo ramo corrispondente, dall’alto verso il basso. Un ramo senza condizioni è il caso finale.</p>
+			for bi,b:=range d.Flow.Definition.Branches {
+
+				<div class="branch">
+<div class="branch-header">
+@Input(key("branch",bi,"name"),"Nome del ramo",b.Name,"text",false)
+@EditorButton(key("remove","branch",bi),"Rimuovi ramo")
+</div>
+					@ConditionGroup(key("branch",bi,"when"),b.When,d.Flow.Definition.Extractors)
+					@EditorButton(key("condition",bi),"＋ Condizione del ramo")
+					for ai,a:=range b.Actions {
+ @ActionEditor(d,bi,ai,a)
+}
+					@EditorButton(key("action",bi),"＋ Azione")
+				</div>
+			}
+			@EditorButton("branch","＋ Ramo")
+		</section>
+		<div class="panel callout">
+<strong>Valori dinamici</strong>
+<p>Usa <code>{ "{{ .subject }}" }</code>, <code>{ "{{ .from }}" }</code>, <code>{ "{{ .body }}" }</code> o una variabile estratta. Sono disponibili trim, lower, upper, replace e urlquery. La simulazione mostra i valori prima di qualsiasi scrittura.</p>
+</div>
+		<div class="editor-save">
+<a href="/flows">Annulla</a>
+<button class="button primary" type="submit">Salva flusso</button>
+</div>
+	</form>
+}
+templ ComparisonEditor(d Data) {
+	<section class="panel form-panel">
+		<h2>Gestione del flusso · A/B</h2>
+		<label class="check"><input type="checkbox" name="comparison" checked?={ d.Flow.Definition.Comparison != nil }/> Affianca B con Jev e invia il confronto al mio DM Slack</label>
+		<p class="hint">A continua a eseguire le regole standard. B valuta le stesse email, anche quelle escluse da A, e propone un ramo configurato. Solo A crea ticket, elementi nelle liste o inoltri. Email e regole vengono inviate a TypeSafe quando abiliti B.</p>
+		if !d.JevReady {
+			<p class="hint">Per attivare B configura la chiave API TypeSafe sul server. Puoi già salvare la bozza.</p>
+		}
+		@Textarea("comparison.instructions", "Regole per Jev · descrivi ambito, rami ed esclusioni", comparisonConfig(d.Flow.Definition).Instructions)
+		<div class="form-grid">
+			<label class="field"><span>Connessione Slack per il confronto</span>
+				<select name="comparison.slack_connection_id">
+					<option value="">Scegli una connessione Slack</option>
+					for _, c := range d.Connections {
+						if c.Provider == "slack" {
+							<option value={ ID(c.ID) } selected?={ c.ID == comparisonConfig(d.Flow.Definition).SlackConnectionID }>{ c.Name }</option>
+						}
+					}
+				</select>
+			</label>
+			@Input("comparison.slack_recipient", "Il tuo ID membro Slack U…/W… o DM personale D…", comparisonConfig(d.Flow.Definition).SlackRecipient, "text", false)
+		</div>
+		<p class="hint">Slack → il tuo profilo → ⋯ / Altro → Copia ID membro. Il bot deve avere chat:write e im:write. I canali e i DM di gruppo sono esclusi. Senza la spunta rimane attiva solo A.</p>
+	</section>
+}
+templ FieldSelect(name,label,value string,extractors []model.Extractor) {
+
+	<label class="field">
+<span>{ label }</span>
+<select name={ name }>
+for _,field:=range choices("from","to","subject","body","id","received_at") {
+<option value={ field } selected?={ value==field }>{ field }</option>
+}
+for _,e:=range extractors {
+<option value={ e.Name } selected?={ value==e.Name }>{ e.Name }</option>
+}
+if value!=""&&!knownField(value,extractors) {
+<option value={ value } selected>{ value }</option>
+}</select>
+</label>
+}
+func knownField(s string,extractors []model.Extractor)bool{for _,v:=range []string{"from","to","subject","body","id","received_at"}{if s==v{return true}};for _,e:=range extractors{if e.Name==s{return true}};return false}
+templ ConditionGroup(prefix string,g model.Group,extractors []model.Extractor) {
+
+	<label class="field compact">
+<span>Condizioni</span>
+<select name={ prefix+".mode" }>
+<option value="all" selected?={ g.Mode!="any" }>Tutte · AND</option>
+<option value="any" selected?={ g.Mode=="any" }>Almeno una · OR</option>
+</select>
+</label>
+	for i,c:=range g.Conditions {
+<div class="editor-row condition-row">
+@FieldSelect(key(prefix,i,"field"),"Campo",c.Field,extractors)
+<label class="field">
+<span>Operatore</span>
+<select name={ key(prefix,i,"operator")
+}>
+for _,op:=range choices("equals","prefix","contains","regex") {
+
+<option value={ op } selected?={ c.Operator==op }>{ op }</option>
+}</select>
+</label>
+@Input(key(prefix,i,"value"),"Valore",c.Value,"text",false)
+<label class="check">
+<input name={ key(prefix,i,"ignore_case")
+} type="checkbox" checked?={ c.IgnoreCase }/> Ignora maiuscole</label>
+<label class="check">
+<input name={ key(prefix,i,"not")
+} type="checkbox" checked?={ c.Not }/> Escludi</label>
+@EditorButton(key("remove","condition",prefix,i),"Rimuovi")
+</div>
+}
+}
+templ ActionEditor(d Data,bi,ai int,a model.Action) {
+
+	<div class="action-editor">
+<div class="action-heading">
+<h3>Azione { ID(ai+1)
+}</h3>
+@EditorButton(key("remove","action",bi,ai),"Rimuovi azione")
+</div>
+<div class="form-grid">
+<label class="field">
+<span>Tipo di azione</span>
+<select name={ key("branch",bi,"action",ai,"kind")
+} hx-post="/flows/editor" hx-trigger="change" hx-include="closest form" hx-target="#flow-editor" hx-swap="outerHTML">
+for _,kind:=range choices("jira","jira_request","slack","forward","ignore") {
+
+<option value={ kind } selected?={ a.Kind==kind }>{ action(kind)
+}</option>
+}</select>
+</label>
+		if a.Kind!="ignore" {
+<label class="field">
+<span>Connessione destinazione</span>
+<select name={ key("branch",bi,"action",ai,"connection_id")
+}>
+<option value="">Scegli una connessione</option>
+for _,c:=range d.Connections {
+if c.Provider==providerFor(a.Kind) {
+<option value={ ID(c.ID)
+} selected?={ c.ID==a.ConnectionID }>{ c.Name }</option>
+}
+}</select>
+</label>
+}
+		</div>
+		if a.Kind=="jira"||a.Kind=="jira_request" {
+
+			<div class="form-grid">
+if a.Kind=="jira" {
+@Input(key("branch",bi,"action",ai,"project"),"Chiave progetto Jira",a.Project,"text",false)
+@Input(key("branch",bi,"action",ai,"issue_type"),"ID tipo ticket",a.IssueType,"text",false)
+} else {
+@Input(key("branch",bi,"action",ai,"service_desk_id"),"ID Service Desk",a.ServiceDeskID,"text",false)
+@Input(key("branch",bi,"action",ai,"request_type_id"),"ID tipo richiesta",a.RequestTypeID,"text",false)
+}
+@Input(key("branch",bi,"action",ai,"board_id"),"ID board attesa",intValue(a.BoardID),"number",false)
+@Input(key("branch",bi,"action",ai,"reporter"),"Account ID richiedente · facoltativo",a.Reporter,"text",false)
+</div>
+<p class="hint">I campi devono soddisfare il filtro della board. Sprint e notifiche restano alle automazioni Jira.</p>
+		}
+		if a.Kind=="slack" {
+@Input(key("branch",bi,"action",ai,"list_id"),"ID Slack List",a.ListID,"text",false)
+}
+		if a.Kind=="forward" {
+@Input(key("branch",bi,"action",ai,"to"),"Destinatario dell’inoltro",a.To,"text",false)
+}
+		if a.Kind=="jira"||a.Kind=="jira_request"||a.Kind=="forward" {
+@Input(key("branch",bi,"action",ai,"subject"),"Riepilogo / oggetto",a.Subject,"text",false)
+@Textarea(key("branch",bi,"action",ai,"body"),"Descrizione / corpo dell’inoltro",a.Body)
+}
+		if a.Kind=="ignore" {
+@Input(key("branch",bi,"action",ai,"reason"),"Motivo dell’esclusione",a.Reason,"text",false)
+}
+		if a.Kind=="jira"||a.Kind=="jira_request"||a.Kind=="slack" {
+<h4>Campi di destinazione</h4>
+for fi,f:=range a.Fields {
+<div class="editor-row mapping-row">
+@Input(key("branch",bi,"action",ai,"field",fi,"field"),"ID campo / colonna",f.Field,"text",false)
+<label class="field">
+<span>Tipo</span>
+<select name={ key("branch",bi,"action",ai,"field",fi,"type")
+}>
+for _,typ:=range choices("text","number","boolean","option","user","date","link","json") {
+
+<option value={ typ } selected?={ f.Type==typ }>{ typ }</option>
+}</select>
+</label>
+@Input(key("branch",bi,"action",ai,"field",fi,"value"),"Valore o template",f.Value,"text",false)
+@EditorButton(key("remove","field",bi,ai,fi),"Rimuovi")
+</div>
+}
+@EditorButton(key("field",bi,ai),"＋ Campo")
+}
+	</div>
+}
+func intValue(v int)string{if v==0{return ""};return ID(v)}
+
+templ Simulation(d Data) {
+
+	@Heading("NESSUNA SCRITTURA ESTERNA", "Simula · "+d.Flow.Name, "Verifica classificazione, dati estratti e azioni su un’email di esempio.") {
+<a href={ templ.SafeURL(path("/flows/",d.Flow.ID))
+} class="button secondary">Modifica flusso</a>
+}
+	if d.Flow.Definition.Comparison != nil {
+		<p class="hint">Questa simulazione usa A. Il confronto B con Jev parte sulle nuove email ricevute dal flusso attivo.</p>
+	}
+	<form class="panel form-panel" method="post" action={ path("/flows/",d.Flow.ID)+"/simulate" }>
+@CSRF(d.CSRF)
+<label class="field">
+<span>Email completa in formato RFC822</span>
+<textarea class="code" name="raw" rows="14" required placeholder="From: mittente@example.test&#10;To: team@example.test&#10;Subject: Segnalazione&#10;&#10;Testo del messaggio">{ d.Raw }</textarea>
+</label>
+<button type="submit" class="button primary">Simula elaborazione</button>
+</form>
+	if d.Simulation!="" {
+<section class="panel form-panel">
+<h2>Risultato: { d.Branch }</h2>
+<pre>{ d.Simulation }</pre>
+</section>
+}
+}
+
+templ Runs(d Data) {
+
+	@Heading("TRACCIA OPERATIVA", "Esecuzioni", "Ultime 100 elaborazioni, inclusi errori ed esclusioni.")
+	<div id="runs-table" hx-get="/runs" hx-trigger="every 10s" hx-target="this" hx-select="#runs-table" hx-swap="outerHTML">
+		if len(d.Runs)==0 {
+<div class="panel empty">
+<h2>In attesa della prima email</h2>
+<p>Le esecuzioni compariranno qui quando una casella collegata riceverà nuovi messaggi.</p>
+</div>
+} else {
+<div class="panel table-wrap">
+<table>
+<thead>
+<tr>
+<th>Email / flusso</th>
+<th>Ricezione nell’app</th>
+<th>Stato</th>
+<th>Durata elaborazione</th>
+<th>
+</th>
+</tr>
+</thead>
+<tbody>
+for _,r:=range d.Runs {
+<tr>
+<td>
+<strong>{ r.Subject }</strong>
+<small>{ r.FlowName }</small>
+</td>
+<td>{ date(r.CreatedAt)
+}</td>
+<td>
+@Badge(r.Status)
+</td>
+<td>{ latency(r)
+}</td>
+<td>
+<a href={ templ.SafeURL(path("/runs/",r.ID))
+}>Dettaglio →</a>
+</td>
+</tr>
+}</tbody>
+</table>
+</div>
+}
+	</div>
+}
+templ ComparisonDetail(c model.Comparison, runID int) {
+	<section id="comparison-result" class="panel form-panel" hx-get={ path("/runs/", runID) } hx-trigger="every 10s" hx-select="#comparison-result" hx-swap="outerHTML">
+		<div class="action-heading"><h2>Confronto A/B · Jev</h2>@Badge(c.Status)</div>
+		<p class="hint">A esegue il flusso standard. B propone soltanto: nessuna scrittura su Jira, liste Slack o email. Qui sono conservati i piani valutati; gli esiti effettivi di A sono nelle azioni dell’esecuzione.</p>
+		if c.Error != "" {
+			<p class="alert error">{ c.Error }</p>
+		}
+		if c.Reference != "" {
+			<p class="fine">Report inviato al DM personale: { c.Reference }</p>
+		}
+		if c.Result.Model != "" {
+			<p class="fine">{ comparisonInfo(c.Result) }</p>
+			<pre>{ pretty(c.Result) }</pre>
+		}
+	</section>
+}
+
+templ RunDetail(d Data) {
+
+	@Heading("DETTAGLIO ESECUZIONE", d.Run.Subject, d.Run.FlowName+" · "+date(d.Run.CreatedAt)) {
+<a class="button secondary" href="/runs">Tutte le esecuzioni</a>
+}
+	<div class="run-summary">
+@Badge(d.Run.Status)
+<span class="fine">Durata: { latency(d.Run)
+} · Gmail ID: { d.Run.MessageID }</span>
+</div>
+	if d.Run.Comparison != nil {
+		@ComparisonDetail(*d.Run.Comparison, d.Run.ID)
+	}
+	for _,s:=range d.Run.Steps {
+<section class="panel form-panel">
+<div class="action-heading">
+<h2>{ action(s.Action.Kind)
+}</h2>
+@Badge(s.Status)
+</div>
+<p class="fine">Tentativi: { ID(s.Attempts)
+}</p>
+if s.Reference!="" {
+if safeReference(s.Reference) {
+<a href={ templ.SafeURL(s.Reference)
+} rel="noopener noreferrer" target="_blank">Apri destinazione ↗</a>
+} else {
+<p>{ s.Reference }</p>
+}
+}if s.Error!="" {
+<p class="alert error">{ s.Error }</p>
+}
+		if d.User.Admin&&(s.Status=="failed"||s.Status=="uncertain"||s.Status=="warning")&&s.Action.Kind!="ignore" {
+
+			<form method="post" action={ path("/steps/",s.ID)+"/resolve" }>
+@CSRF(d.CSRF)
+@Input("reference","Riferimento verificato nella destinazione",s.Reference,"text",true)
+<button class="button secondary" type="submit">Conferma esito già riuscito</button>
+</form>
+			if s.Reference==""&&s.Status!="warning" {
+<form method="post" action={ path("/steps/",s.ID)+"/retry" } class="retry-form">
+@CSRF(d.CSRF)if s.Status=="uncertain" {
+<label class="check">
+<input type="checkbox" name="confirmed" value="yes" required/> Ho verificato che l’azione non è stata eseguita nella destinazione</label>
+}<button class="button secondary" type="submit">Riprova questa azione</button>
+</form>
+}
+		}
+	</section>
+}
+}

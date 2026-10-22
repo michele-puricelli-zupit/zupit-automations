@@ -1,0 +1,11 @@
+services:
+  app:
+    environment:
+      TYPESAFE_API_KEY_FILE: /run/secrets/typesafe_api_key
+      TYPESAFE_MODEL: ${TYPESAFE_MODEL:-jev-latest}
+    secrets:
+      - typesafe_api_key
+
+secrets:
+  typesafe_api_key:
+    file: ./secrets/typesafe_api_key

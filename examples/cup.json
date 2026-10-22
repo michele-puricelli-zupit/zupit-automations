@@ -1,0 +1,112 @@
+{
+  "name": "Richieste CUP",
+  "source_id": 0,
+  "enabled": false,
+  "definition": {
+    "version": 1,
+    "filter": {
+      "mode": "all",
+      "conditions": [
+        {
+          "field": "from",
+          "operator": "equals",
+          "value": "DA_CONFIGURARE",
+          "ignore_case": true
+        },
+        {
+          "field": "subject",
+          "operator": "regex",
+          "value": "DA_CONFIGURARE",
+          "ignore_case": true
+        },
+        {
+          "field": "body",
+          "operator": "regex",
+          "value": "(?m)^[ \\t]*[^\\r\\n]+[ \\t]+ha creato un ticket[ \\t\\r]*$",
+          "ignore_case": true,
+          "not": true
+        }
+      ]
+    },
+    "extractors": [],
+    "branches": [
+      {
+        "name": "Unità erogante",
+        "when": {
+          "mode": "all",
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "DA_CONFIGURARE",
+              "ignore_case": true
+            }
+          ]
+        },
+        "actions": [
+          {
+            "kind": "jira",
+            "connection_id": 0,
+            "project": "DA_CONFIGURARE",
+            "board_id": 0,
+            "issue_type": "DA_CONFIGURARE",
+            "reporter": "DA_CONFIGURARE",
+            "subject": "{{ .subject }}",
+            "body": "{{ .body }}",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "name": "Segnalazione bug",
+        "when": {
+          "mode": "all",
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "DA_CONFIGURARE",
+              "ignore_case": true
+            }
+          ]
+        },
+        "actions": [
+          {
+            "kind": "jira",
+            "connection_id": 0,
+            "project": "APPSD",
+            "board_id": 0,
+            "issue_type": "DA_CONFIGURARE",
+            "reporter": "DA_CONFIGURARE",
+            "subject": "{{ .subject }}",
+            "body": "{{ .body }}",
+            "fields": []
+          }
+        ]
+      },
+      {
+        "name": "Suggerimento al PO",
+        "when": {
+          "mode": "all",
+          "conditions": [
+            {
+              "field": "subject",
+              "operator": "contains",
+              "value": "DA_CONFIGURARE",
+              "ignore_case": true
+            }
+          ]
+        },
+        "actions": [
+          {
+            "kind": "forward",
+            "connection_id": 0,
+            "to": "DA_CONFIGURARE",
+            "subject": "{{ .subject }}",
+            "body": "Da: {{ .from }}\nOggetto: {{ .subject }}\n\n{{ .body }}"
+          }
+        ]
+      }
+    ]
+  }
+}
