@@ -10,13 +10,13 @@
         {
           "field": "from",
           "operator": "equals",
-          "value": "DA_CONFIGURARE",
+          "value": "david.tacconi@asuit.tn.it",
           "ignore_case": true
         },
         {
           "field": "subject",
           "operator": "regex",
-          "value": "DA_CONFIGURARE",
+          "value": "^Nuova segnalazione problema software POST$",
           "ignore_case": true
         },
         {
@@ -65,7 +65,7 @@
             {
               "field": "subject",
               "operator": "contains",
-              "value": "DA_CONFIGURARE",
+              "value": "Nuova segnalazione problema software POST",
               "ignore_case": true
             }
           ]

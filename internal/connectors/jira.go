@@ -5,7 +5,9 @@ import (
 	"encoding/base64"
 	"fmt"
 	"github.com/zupit-it/zupit-automations/internal/engine"
+	"github.com/zupit-it/zupit-automations/internal/logging"
 	"github.com/zupit-it/zupit-automations/internal/model"
+	"log/slog"
 	"net/url"
 	"strings"
 )
@@ -70,6 +72,18 @@ func (c *Clients) createIssue(ctx context.Context, conn model.Connection, a mode
 		return model.Result{}, &Failure{Message: "Jira non ha restituito il riferimento del ticket", Uncertain: true}
 	}
 	result := model.Result{Reference: conn.Config["url"] + "/browse/" + url.PathEscape(key)}
+	if a.Kind == "jira_request" {
+		if a.QueueID > 0 {
+			found, err := c.inQueue(ctx, conn, a, key)
+			if err != nil {
+				slog.WarnContext(ctx, "Richiesta Jira creata; controllo coda fallito", "event", "jira.queue_check_failed", "connection_id", conn.ID, "queue_id", a.QueueID, "reference", result.Reference, logging.Error(err))
+				result.Warning = "Richiesta creata; verifica coda non riuscita. Controllare permessi agente e configurazione della coda."
+			} else if !found {
+				result.Warning = "Richiesta creata ma non ancora presente nella coda attesa. Verificare filtro e automazioni Jira."
+			}
+		}
+		return result, nil
+	}
 	// Board verification is read-only: a failure must never recreate the issue.
 	var board struct {
 		Issues []struct {
@@ -78,25 +92,56 @@ func (c *Clients) createIssue(ctx context.Context, conn model.Connection, a mode
 	}
 	path := fmt.Sprintf("/rest/agile/1.0/board/%d/issue?jql=%s&maxResults=1", a.BoardID, url.QueryEscape(`key = "`+key+`"`))
 	if err = c.jira(ctx, conn, "GET", path, nil, &board); err != nil {
+		slog.WarnContext(ctx, "Ticket Jira creato; controllo board fallito", "event", "jira.board_check_failed", "connection_id", conn.ID, "board_id", a.BoardID, "reference", result.Reference, logging.Error(err))
 		result.Warning = "Ticket creato; verifica board non riuscita. Controllare permessi, filtro e automazioni Jira."
 	} else if len(board.Issues) != 1 || board.Issues[0].Key != key {
 		result.Warning = "Ticket creato ma non ancora presente nella board attesa. Verificare filtro e automazioni Jira."
 	}
 	return result, nil
 }
+
+func (c *Clients) inQueue(ctx context.Context, conn model.Connection, a model.Action, key string) (bool, error) {
+	for start := 0; ; {
+		var page struct {
+			IsLastPage bool `json:"isLastPage"`
+			Values     []struct {
+				Key string `json:"key"`
+			} `json:"values"`
+		}
+		path := fmt.Sprintf("/rest/servicedeskapi/servicedesk/%s/queue/%d/issue?start=%d&limit=100", url.PathEscape(a.ServiceDeskID), a.QueueID, start)
+		if err := c.jira(ctx, conn, "GET", path, nil, &page); err != nil {
+			return false, err
+		}
+		for _, issue := range page.Values {
+			if issue.Key == key {
+				return true, nil
+			}
+		}
+		if page.IsLastPage || len(page.Values) == 0 {
+			return false, nil
+		}
+		start += len(page.Values)
+	}
+}
+
 func (c *Clients) VerifyAction(ctx context.Context, a model.Action) error {
 	conn, err := c.Store.Connection(ctx, a.ConnectionID)
 	if err != nil {
 		return err
 	}
 	if a.Kind == "jira" || a.Kind == "jira_request" {
-		var board map[string]any
-		if err = c.jira(ctx, conn, "GET", fmt.Sprintf("/rest/agile/1.0/board/%d/configuration", a.BoardID), nil, &board); err != nil {
-			return err
-		}
 		var fields map[string]any
 		if a.Kind == "jira_request" {
+			if a.QueueID > 0 {
+				path := fmt.Sprintf("/rest/servicedeskapi/servicedesk/%s/queue/%d", url.PathEscape(a.ServiceDeskID), a.QueueID)
+				if err = c.jira(ctx, conn, "GET", path, nil, &fields); err != nil {
+					return err
+				}
+			}
 			return c.jira(ctx, conn, "GET", "/rest/servicedeskapi/servicedesk/"+url.PathEscape(a.ServiceDeskID)+"/requesttype/"+url.PathEscape(a.RequestTypeID)+"/field", nil, &fields)
+		}
+		if err = c.jira(ctx, conn, "GET", fmt.Sprintf("/rest/agile/1.0/board/%d/configuration", a.BoardID), nil, &fields); err != nil {
+			return err
 		}
 		return c.jira(ctx, conn, "GET", "/rest/api/3/issue/createmeta/"+url.PathEscape(a.Project)+"/issuetypes/"+url.PathEscape(a.IssueType), nil, &fields)
 	}

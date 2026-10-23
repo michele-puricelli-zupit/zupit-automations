@@ -31,7 +31,9 @@ func configuredSamplePreset(t *testing.T, name string) model.Definition {
 		t.Fatal(err)
 	}
 	d := f.Definition
-	d.Filter.Conditions[0].Value = "fixture@example.test"
+	if d.Filter.Conditions[0].Operator == "equals" {
+		d.Filter.Conditions[0].Value = "fixture@example.test"
+	}
 	for bi := range d.Branches {
 		for ai := range d.Branches[bi].Actions {
 			a := &d.Branches[bi].Actions[ai]
@@ -164,7 +166,7 @@ func TestCUPJiraResultIsNotANewRequest(t *testing.T) {
 	if actions, _, err := engine.Plan(d, m); err != nil || len(actions) != 0 {
 		t.Fatalf("Jira result would create a duplicate: %+v %v", actions, err)
 	}
-	// Synthetic input checks the known output mapping; the original CUP source email is still missing.
+	// Synthetic input also checks preservation of quotes and attachment links.
 	m.Body = "Nuova segnalazione problema software POST\nDescrizione dettagliata Errore con la visita \"SPORTIVA\"\nScreenshot / allegati https://drive.google.com/open?id=fixture-1"
 	actions, branch, err := engine.Plan(d, m)
 	if err != nil || branch != "Segnalazione bug" || len(actions) != 1 {
@@ -172,5 +174,72 @@ func TestCUPJiraResultIsNotANewRequest(t *testing.T) {
 	}
 	if actions[0].Project != "APPSD" || actions[0].Body != m.Body {
 		t.Fatal("CUP bug must preserve the description and target the observed APPSD project")
+	}
+}
+
+func TestProvidedEmailCases(t *testing.T) {
+	for _, tt := range []struct {
+		preset, sample, sender, branch string
+	}{
+		{"srt", "srt-forwarded", "support@tndigit.it", "Segnalazione SRT"},
+		{"cup", "cup-forwarded", "david.tacconi@asuit.tn.it", "Segnalazione bug"},
+		{"kit", "key2help-html", "servicedesk4@siag.it", "Call Foundation"},
+	} {
+		t.Run(tt.preset, func(t *testing.T) {
+			d := configuredSamplePreset(t, tt.preset)
+			preset, _ := Preset(tt.preset)
+			d.Filter = preset.Definition.Filter
+			if got := d.Filter.Conditions[0].Value; got != tt.sender {
+				t.Fatalf("sender=%q, want %q", got, tt.sender)
+			}
+			m := sampleMessage(t, tt.sample)
+			if tt.preset != "kit" {
+				if actions, _, err := engine.Plan(d, m); err != nil || len(actions) != 0 {
+					t.Fatalf("forwarded sample must not bypass sender checks: %+v %v", actions, err)
+				}
+				m.From, m.Subject = tt.sender, strings.TrimPrefix(m.Subject, "Fwd: ")
+			}
+			if tt.preset == "kit" {
+				d.Branches[2].Actions[0].Fields = append(d.Branches[2].Actions[0].Fields, model.Mapping{Field: "ColTicket", Type: "link", Value: "{{ .ticket_url }}"})
+			}
+			actions, branch, err := engine.Plan(d, m)
+			if err != nil || branch != tt.branch || len(actions) != 1 {
+				t.Fatalf("provided sample: %+v %q %v", actions, branch, err)
+			}
+			if tt.preset == "kit" {
+				if actions[0].Fields[0].Value != "SR-123827 · verifica oggetto protocolli in errore" || actions[0].Fields[1].Value != "https://tickets.example.test/request/123827?" {
+					t.Fatalf("bad key2help extraction: %+v", actions[0].Fields)
+				}
+			} else if actions[0].Subject != m.Subject || actions[0].Body != m.Body {
+				t.Fatal("ticket must preserve the email subject and body")
+			}
+			m.From = "other@example.test"
+			if actions, _, err := engine.Plan(d, m); err != nil || len(actions) != 0 {
+				t.Fatalf("another sender was accepted: %+v %v", actions, err)
+			}
+		})
+	}
+}
+
+func TestSupportJiraDigestViaMailingListIsExcluded(t *testing.T) {
+	d := configuredSamplePreset(t, "support")
+	m := sampleMessage(t, "support-jira-digest")
+	if m.From != "support_kr@zupit.it" || engine.Variables(m)["reply_to"] != "jira@zupit-pro.atlassian.net" {
+		t.Fatal("mailing list hides the Jira sender; Reply-To must remain available")
+	}
+	if actions, _, err := engine.Plan(d, m); err != nil || len(actions) != 0 {
+		t.Fatalf("Jira digest would create a Slack item: %+v %v", actions, err)
+	}
+	for _, raw := range []string{
+		"From: User <user@example.test>\r\nReply-To: Team <team@example.test>\r\nSubject: Problema da verificare\r\n\r\nDescrizione",
+		"From: User <user@example.test>\r\nSubject: Problema da verificare\r\n\r\nDescrizione",
+	} {
+		m, err := connectors.ParseEmail(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if actions, branch, err := engine.Plan(d, m); err != nil || len(actions) != 1 || branch != "Segnalazione Support KR" {
+			t.Fatalf("ordinary support request was excluded: %+v %q %v", actions, branch, err)
+		}
 	}
 }

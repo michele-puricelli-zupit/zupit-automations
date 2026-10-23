@@ -47,6 +47,13 @@ func parseFlow(v url.Values) model.Flow {
 				break
 			}
 			a := model.Action{Kind: v.Get(ap + "kind"), ConnectionID: intValue(v.Get(ap + "connection_id")), Project: v.Get(ap + "project"), BoardID: intValue(v.Get(ap + "board_id")), IssueType: v.Get(ap + "issue_type"), Reporter: v.Get(ap + "reporter"), ServiceDeskID: v.Get(ap + "service_desk_id"), RequestTypeID: v.Get(ap + "request_type_id"), ListID: v.Get(ap + "list_id"), To: v.Get(ap + "to"), Subject: v.Get(ap + "subject"), Body: v.Get(ap + "body"), Reason: v.Get(ap + "reason")}
+			if value := v.Get(ap + "queue_id"); value != "" {
+				queueID, err := strconv.Atoi(value)
+				if err != nil {
+					queueID = -1
+				}
+				a.QueueID = queueID
+			}
 			for fi := 0; fi < 100; fi++ {
 				fp := ap + "field." + strconv.Itoa(fi) + "."
 				if !v.Has(fp + "field") {

@@ -5,3 +5,5 @@
 *.log
 credentials*.json
 secrets/
+deploy/*.env
+deploy/backups/

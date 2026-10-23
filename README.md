@@ -6,7 +6,7 @@ Servizio Go per sostituire gli scenari Make: Gmail → condizioni/estrazioni →
 
 Sono implementati login e ruoli, connessioni cifrate, editor, simulazione RFC822, ricezione Pub/Sub StreamingPull, recupero Gmail, coda, retry, riconciliazione manuale e avvisi Slack. I quattro modelli SRT, CUP, key2help e Support KR si aprono da **Flussi** come bozze; scegliere una sorgente Gmail per salvarli. Tutti i valori `DA_CONFIGURARE` devono essere sostituiti prima dell'attivazione.
 
-Sono disponibili esempi del contenuto delle notifiche SRT e key2help e del risultato CUP già creato da Make/Jira. I [campioni di test](examples/README.md) usano intestazioni sintetiche e dati adattati; mancano l'email sorgente CUP, le intestazioni originali, le esportazioni Make, le credenziali e i mapping definitivi. I modelli non sono scenari pronti per la produzione. Scritture reali, board/sprint Jira e latenza dall'arrivo dell'email richiedono collaudo sulle destinazioni aziendali.
+Sono disponibili esempi SRT e key2help, un bug dal modulo CUP e un riepilogo Jira da escludere per Support KR, oltre al risultato CUP già creato da Make/Jira. I [campioni di test](examples/README.md) sono ripuliti e ridotti dai messaggi forniti. I modelli includono i mittenti osservati; gli inoltri SRT e CUP restano distinti dagli arrivi diretti. Mancano i casi degli altri rami, una richiesta Support KR positiva, le esportazioni Make, le credenziali e i mapping definitivi. I modelli non sono scenari pronti per la produzione. Scritture reali, board/sprint Jira e latenza dall'arrivo dell'email richiedono collaudo sulle destinazioni aziendali.
 
 ## Configurazione Google e destinazioni
 
@@ -15,7 +15,7 @@ Sono disponibili esempi del contenuto delle notifiche SRT e key2help e del risul
    - `APP_BASE_URL/auth/gmail/callback` per collegare una casella.
 2. Autorizzare gli scope `openid`, `email`, `profile`, `gmail.readonly` e `gmail.send`. L'app richiede gli scope Gmail solo durante il collegamento della casella; usare una casella Workspace reale, anche diversa dall'account amministratore.
 3. Creare un topic nel medesimo progetto del client OAuth e una subscription **pull**. Dare a `gmail-api-push@system.gserviceaccount.com` il ruolo Publisher sul topic. Fornire al server credenziali ADC con ruolo Subscriber sulla subscription. Non è necessario un webhook Pub/Sub pubblico. [Configurazione Gmail push](https://developers.google.com/workspace/gmail/api/guides/push).
-4. Per Jira usare un account tecnico con API token: accesso a progetto e board, creazione ticket, campi e modifica del richiedente quando richiesta. Impostare progetto, tipo ticket, board e account ID del richiedente; per Service Management usare service desk e tipo richiesta. Il controllo delle destinazioni all'attivazione è in sola lettura; verificare anche i permessi di scrittura con un ticket di prova.
+4. Per Jira usare un account tecnico con API token e permessi di creazione ticket, accesso ai campi e modifica del richiedente quando richiesta. Nell'editor scegliere **Jira Board · crea ticket** per configurare progetto, tipo ticket e board, oppure **Jira Service Management · crea richiesta** per configurare Service Desk e tipo richiesta, senza obbligo di board. L'account ID del richiedente è facoltativo. Per Service Management si può indicare una **coda attesa**: l'account deve essere agente del Service Desk per verificarla. Il controllo delle destinazioni all'attivazione è in sola lettura; verificare anche i permessi di scrittura con un ticket di prova.
 5. Installare una Slack App con bot token e scope `lists:read`, `lists:write`, `chat:write`. Condividere le liste con l'app e aggiungere il bot al canale avvisi. Servono ID reali di liste e colonne. Le Slack List richiedono un workspace con piano a pagamento. [Lettura liste](https://docs.slack.dev/reference/methods/slackLists.items.list/), [creazione elementi](https://docs.slack.dev/reference/methods/slackLists.items.create/).
 
 ## Avvio Docker
@@ -50,6 +50,8 @@ docker compose logs --tail=100 migrate app
 
 Le migrazioni vengono applicate prima dell'applicazione. Aprire `http://localhost:8080`, accedere come amministratore, creare le connessioni e verificarle. Per Gmail salvare la connessione, quindi usare **Autorizza Google** selezionando la casella configurata. Nessuno scenario viene attivato automaticamente.
 
+Se il progetto è stato spostato, il comando **Start** di Docker Desktop riusa i percorsi dei segreti registrati nei vecchi container. Dalla nuova cartella eseguire `docker compose up --build -d --force-recreate` per aggiornare i mount conservando il volume PostgreSQL. Non usare `down -v`: eliminerebbe il database.
+
 `/health/live` verifica il processo; `/health/ready` verifica il database. Il server rifiuta l'avvio se le migrazioni sono mancanti o modificate dopo l'applicazione.
 
 ## Confronto A/B con Jev · opzionale
@@ -77,13 +79,15 @@ Ogni confronto conserva una copia dell'email, delle regole e del destinatario al
 
 ## Produzione e Portainer
 
+I file per il rilascio sono in [`deploy/`](deploy/PORTAINER.md): Compose con Traefik, esempio dei segreti e guida operativa. Il workflow **Deploy production** verifica il progetto, pubblica l'immagine con tag SHA su GHCR e distribuisce su `zupit-applications`, usando l'infrastruttura di Zupit Eventi. Si avvia manualmente oppure con un tag Git `v*`; richiede l'ambiente GitHub `production` configurato.
+
 Usare un ambiente Docker standalone e una sola replica dell'applicazione: il worker prende un lock PostgreSQL per evitare più istanze concorrenti. Portainer in modalità Swarm richiede una configurazione distinta e non può usare direttamente le dipendenze Compose per la migrazione.
 
 - Impostare `APP_ENV=production` e `APP_BASE_URL=https://HOST_REALE`; registrare le due callback corrispondenti nel client Google.
 - Terminare HTTPS sul reverse proxy aziendale. La porta pubblicata da Compose è limitata a `127.0.0.1`; un proxy in un altro container deve raggiungere `app:8080` tramite una rete Docker condivisa, da configurare per l'ambiente.
-- Costruire e pubblicare l'immagine nel proprio registry, impostare `AUTOMATIONS_IMAGE` a un tag immutabile e usare la stessa immagine per `app` e `migrate`. In Portainer rimuovere `build` dall'ancora `x-image` quando si distribuisce l'immagine già costruita. I percorsi dei segreti devono esistere sull'host dell'ambiente Docker.
+- Il Compose di produzione usa `APP_IMAGE_TAG`, fornito dalla pipeline, per la stessa immagine di `app` e `migrate`; non esegue build sul server. I segreti provengono dall'ambiente GitHub `production`. Il Compose locale continua a usare `AUTOMATIONS_IMAGE` e i file in `secrets/`.
 - Tenere separati database, volume, segreti e client OAuth da zupit-eventi. Cambiare la sola password PostgreSQL nel file non aggiorna una password già salvata nel volume: una rotazione richiede anche l'aggiornamento del ruolo e della DSN.
-- Prima di aggiornare: fermare `app`, eseguire il backup del database e conservare l'immagine precedente. Poi applicare le migrazioni con `docker compose run --rm migrate` e avviare `app`. Non tornare a un vecchio binario su uno schema incompatibile: ripristinare anche il relativo backup.
+- Prima di aggiornare: eseguire il backup del database e conservare l'immagine precedente. La pipeline ferma `app`, applica le migrazioni e attende la readiness della nuova versione. Per il rilascio manuale seguire la sequenza nella guida Portainer. Non tornare a un vecchio binario su uno schema incompatibile: ripristinare anche il relativo backup.
 
 I token sono cifrati con AES-GCM; email, definizioni ed esecuzioni risiedono nel database e richiedono protezione del volume e dei backup. Non è ancora prevista una cancellazione automatica dello storico. Non eliminare il volume durante gli aggiornamenti.
 
@@ -97,9 +101,29 @@ I token sono cifrati con AES-GCM; email, definizioni ed esecuzioni risiedono nel
 - Gmail viene elaborato sugli eventi; ogni cinque minuti un timer interno recupera eventuali notifiche perse. Il watch viene rinnovato circa ogni giorno. Non è necessario cron.
 - La prima autorizzazione della casella registra un punto di passaggio; l'attivazione o riattivazione di un flusso registra un ulteriore limite. Le email precedenti non vengono rielaborate automaticamente. I checkpoint e la deduplicazione sono persistenti.
 - I retry automatici sono al massimo due dopo il primo tentativo, con backoff e `Retry-After`. Le credenziali revocate sospendono la connessione. Ripristinarla permette alla coda di riprendere.
-- Un timeout durante una creazione produce **Da verificare**: controllare Jira/Slack/Gmail prima di confermare un nuovo tentativo o riconciliare il riferimento esterno. Un ticket già creato con board errata genera **Con avviso** e conserva il link; non viene ricreato.
-- Sprint e notifiche Jira continuano a dipendere dalle automazioni Jira esistenti. L'app controlla il risultato del filtro della board; non sposta direttamente il ticket in una board.
+- Un timeout durante una creazione produce **Da verificare**: controllare Jira/Slack/Gmail prima di confermare un nuovo tentativo o riconciliare il riferimento esterno. Un ticket già creato ma assente dalla board o dalla coda attesa genera **Con avviso** e conserva il link; non viene ricreato. Lo stesso vale se il controllo della destinazione fallisce dopo la creazione.
+- Sprint e notifiche Jira continuano a dipendere dalle automazioni Jira esistenti. L'app controlla il risultato del filtro della board oppure, per Service Management, la presenza nella coda se configurata; non sposta direttamente il ticket. I campi devono soddisfare i filtri Jira. Le azioni salvate conservano i tipi `jira` e `jira_request`; per queste ultime l'eventuale vecchio `board_id` non viene più usato.
 - La durata mostrata nelle esecuzioni parte dalla registrazione nell'app, non dall'arrivo originale dell'email. Misurare separatamente la latenza completa durante il collaudo.
+
+## Log operativi
+
+Server e migrazioni scrivono JSON su stdout, leggibile nei log del container in Portainer o con `docker compose logs --since=10m app migrate`. Ogni evento ha un codice stabile `event`, un messaggio in italiano e gli ID necessari per collegare i passaggi. Oggetto, corpo, mittenti, token, prompt e risposte grezze dei provider non vengono scritti nei log applicativi. I riferimenti ai ticket creati e gli ID tecnici restano visibili per la diagnosi; proteggere l'accesso ai log come quello all'applicazione.
+
+| Evento | Significato / verifica |
+|---|---|
+| `database.connect_failed`, `database.schema_failed` | Connessione o schema non disponibili; controllare `error.kind`, SQLSTATE, secret e servizio `migrate`. SQLSTATE `53100` indica spazio disco esaurito. |
+| `flow.saved` | Flusso salvato, con `enabled` e `activated_at`; le email precedenti all'attivazione non generano esecuzioni. |
+| `pubsub.started`, `pubsub.received`, `pubsub.receive_failed` | Listener avviato, notifica ricevuta o problema di trasporto; gli errori riportano il codice gRPC e indicazioni su ADC/permessi. Il recupero Gmail resta ogni 5 minuti. |
+| `gmail.sync_completed`, `gmail.ingested`, `gmail.message_skipped` | Durata e candidati della sincronizzazione, email inserite, duplicati ed esclusioni. `active_flows=0` significa che nessun flusso attivo usa quella casella; `skipped_before_activation` conta le valutazioni saltate perché precedenti all'attivazione. |
+| `flow.evaluated` | Esecuzione registrata dopo il commit: `run_id`, `flow_id`, `message_id` e `received_at`. `filter_mismatch` indica filtro iniziale non soddisfatto; `no_matching_branch` nessun ramo; `planning_failed` errore da aprire in Esecuzioni; `actions_queued` azioni accodate. |
+| `action.started`, `action.completed` | Tentativo, connessione, tipo azione, durata, stato e riferimento esterno. `pending` include `next_at`; `warning` conserva una creazione riuscita da verificare; `uncertain` richiede riconciliazione prima di riprovare. |
+| `action.persist_failed` | Il risultato esterno non è stato salvato: verificare il servizio esterno prima di ripetere l'azione. |
+| `connection.paused`, `gmail.source_failed`, `connection.verify_failed` | Credenziali, autorizzazione o configurazione da correggere in Connessioni. |
+| `comparison.*`, `notification.*` | Analisi Jev, consumi, invio DM e avvisi Slack, senza contenuti delle email o dei report. |
+
+Gli errori dei provider includono lo stato HTTP e i flag `auth`, `retryable`, `uncertain`; gli errori tecnici sono classificati senza riportare stringhe che potrebbero contenere credenziali o dati. In caso di email apparentemente mancante, cercare nell'ordine connessione/listener, sincronizzazione, acquisizione, valutazione del flusso e azione. Per un'esecuzione usare gli stessi `run_id` e `step_id` nei log e nell'interfaccia.
+
+Il Compose locale e quello Portainer limitano i log dell'app a 5 file da 10 MB. Questa rotazione non sostituisce un archivio esterno se serve conservazione più lunga e non limita la cache di build Docker.
 
 ## Verifiche e sviluppo
 
@@ -121,7 +145,9 @@ make integration
 
 `make integration` richiede esplicitamente la DSN ed esegue tutta la suite, inclusi OAuth e connettori simulati. Senza `TEST_DATABASE_URL`, `make test` e `make verify` saltano i test PostgreSQL. La CI avvia un database dedicato e verifica anche file generati, Compose e build Docker. Quando l'ambiente limita la cache Go, usare `GOCACHE="$PWD/.cache/go-build" make verify`.
 
-Per avviare i binari locali, esportare le variabili di `.env` (il programma non carica file dotenv), usare una DSN raggiungibile dall'host e poi `make migrate` e `make run`. Il database Compose non pubblica una porta sull'host.
+`make migrate` e `make run` caricano ed esportano automaticamente `.env`, se presente, usando la shell; i valori nel file prevalgono sulle variabili già esportate. Usare sintassi compatibile con la shell e racchiudere tra apici i valori con spazi o caratteri speciali. Il binario Go eseguito direttamente continua a leggere solo l'ambiente.
+
+Per avviare i binari locali serve inoltre una DSN raggiungibile dall'host: `postgres` nel file `secrets/database_url` è il nome del servizio nella rete Docker e non è raggiungibile dal processo Go locale. Il Compose standard non pubblica una porta PostgreSQL. Per usare la configurazione Docker esistente senza modificare la DSN, avviare l'applicazione con `docker compose up --build -d`; per usare `make run` occorre un PostgreSQL raggiungibile dall'host e il relativo `DATABASE_URL` o `DATABASE_URL_FILE`, poi `make migrate` e `make run`.
 
 ## Passaggio da Make
 

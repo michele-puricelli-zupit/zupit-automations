@@ -1,0 +1,74 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/verify.yml
+
+  build-and-push-image:
+    needs: verify
+    uses: zupit-it/pipeline-templates/.github/workflows/docker-step-build-and-push-image.yml@v1.31.2
+    with:
+      WORKING_DIRECTORY: .
+      REGISTRY_URL: ghcr.io
+      DOCKERFILE_PATH: Dockerfile
+      DOCKER_IMAGE_NAME: zupit-automations-production
+      DOCKER_IMAGE_TAG: ${{ github.sha }}
+      RUN_ON: zupit-agents
+      RUNNERS_CONTAINER_GROUP: Container
+    secrets: inherit
+
+  deploy:
+    needs: build-and-push-image
+    runs-on:
+      labels:
+        - deploy
+        - zupit-applications
+      group: Container
+    environment:
+      name: production
+      url: https://automazioni.zupit.software
+    container:
+      image: docker:26.0.0-dind
+    env: ${{ secrets }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pull, migrate and start
+        env:
+          APP_IMAGE_TAG: ${{ needs.build-and-push-image.outputs.DOCKER_IMAGE_NAME }}
+          COMPOSE_PROJECT_NAME: zupit-automations-production
+          COMPOSE_FILE: deploy/compose.portainer.yaml
+        run: |
+          : "${POSTGRES_PASSWORD:?Impostare POSTGRES_PASSWORD}" \
+            "${DATABASE_URL:?Impostare DATABASE_URL}" \
+            "${GOOGLE_CLIENT_SECRET:?Impostare GOOGLE_CLIENT_SECRET}" \
+            "${CSRF_SECRET:?Impostare CSRF_SECRET}" \
+            "${ENCRYPTION_KEY:?Impostare ENCRYPTION_KEY}" \
+            "${GOOGLE_CREDENTIALS_JSON:?Impostare GOOGLE_CREDENTIALS_JSON}"
+          docker-compose config --quiet
+          docker-compose pull
+          docker-compose stop app
+          docker-compose up -d --wait --wait-timeout 120 postgres
+          docker-compose up --no-deps --force-recreate --exit-code-from migrate migrate
+          docker-compose up -d --no-deps --wait --wait-timeout 120 app

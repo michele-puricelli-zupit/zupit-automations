@@ -19,7 +19,7 @@ var nameRE = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
 var funcs = template.FuncMap{"trim": strings.TrimSpace, "lower": strings.ToLower, "upper": strings.ToUpper, "replace": strings.ReplaceAll, "urlquery": url.QueryEscape}
 
 func Variables(m model.Message) map[string]string {
-	return map[string]string{"id": m.ID, "from": m.From, "to": m.To, "subject": m.Subject, "body": m.Body, "received_at": m.ReceivedAt.Format("2006-01-02T15:04:05Z07:00")}
+	return map[string]string{"id": m.ID, "from": m.From, "reply_to": m.ReplyTo, "to": m.To, "subject": m.Subject, "body": m.Body, "received_at": m.ReceivedAt.Format("2006-01-02T15:04:05Z07:00")}
 }
 
 func Validate(d model.Definition) error {
@@ -110,8 +110,11 @@ func validateAction(a model.Action) error {
 			return errors.New("Jira richiede progetto, board, tipo e riepilogo")
 		}
 	case "jira_request":
-		if a.ServiceDeskID == "" || a.RequestTypeID == "" || a.BoardID <= 0 || a.Subject == "" {
-			return errors.New("richiesta Jira richiede service desk, tipo richiesta, board e riepilogo")
+		if a.ServiceDeskID == "" || a.RequestTypeID == "" || a.Subject == "" {
+			return errors.New("richiesta Jira richiede service desk, tipo richiesta e riepilogo")
+		}
+		if a.QueueID < 0 {
+			return errors.New("ID coda deve essere positivo oppure vuoto")
 		}
 	case "slack":
 		if a.ListID == "" || len(a.Fields) == 0 {

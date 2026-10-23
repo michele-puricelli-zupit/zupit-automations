@@ -134,8 +134,8 @@ func ComparisonReport(job model.Comparison, baseURL string) string {
 			}
 		}
 		for _, a := range v.p.Actions {
-			_, err := fmt.Fprintf(&b, "%s proposta: %s · connessione #%d · progetto %s · board %d · lista %s · oggetto %s\n",
-				v.label, a.Kind, a.ConnectionID, a.Project, a.BoardID, a.ListID, a.Subject)
+			_, err := fmt.Fprintf(&b, "%s proposta: %s · connessione #%d · progetto %s · board %d · service desk %s · tipo richiesta %s · coda %d · lista %s · oggetto %s\n",
+				v.label, a.Kind, a.ConnectionID, a.Project, a.BoardID, a.ServiceDeskID, a.RequestTypeID, a.QueueID, a.ListID, a.Subject)
 			if err != nil {
 				return ""
 			}

@@ -22,6 +22,31 @@ import (
 	"github.com/zupit-it/zupit-automations/internal/testutil"
 )
 
+func TestSecurityPolicyAllowsGoogleAuthorizationRedirect(t *testing.T) {
+	server := &Server{Auth: &auth.Manager{}}
+	w := httptest.NewRecorder()
+	server.security(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://accounts.google.com/o/oauth2/v2/auth", http.StatusSeeOther)
+	})).ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/connections/1/authorize", nil))
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("authorization redirect status=%d", w.Code)
+	}
+	target, err := url.Parse(w.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var formSources []string
+	for _, directive := range strings.Split(w.Header().Get("Content-Security-Policy"), ";") {
+		fields := strings.Fields(directive)
+		if len(fields) > 0 && fields[0] == "form-action" {
+			formSources = fields[1:]
+		}
+	}
+	if len(formSources) != 2 || formSources[0] != "'self'" || formSources[1] != target.Scheme+"://"+target.Host {
+		t.Fatalf("form-action must allow local forms and the Google redirect only: %v", formSources)
+	}
+}
+
 func TestEditorDraftAndSimulationThroughProtectedRoutes(t *testing.T) {
 	s := testutil.Database(t)
 	ctx := context.Background()
@@ -85,7 +110,7 @@ func TestEditorDraftAndSimulationThroughProtectedRoutes(t *testing.T) {
 		if w.Code != 200 || !strings.Contains(body, `name="filter.0.field"`) || strings.Contains(body, "<script>unsafe()</script>") {
 			t.Fatalf("editor response invalid: status %d", w.Code)
 		}
-		if strings.Contains(body, "<!DOCTYPE html>") == hx || w.Header().Get("Vary") != "HX-Request" {
+		if strings.Contains(strings.ToLower(body), "<!doctype html>") == hx || w.Header().Get("Vary") != "HX-Request" {
 			t.Fatal("editor did not distinguish fragment and full-page requests")
 		}
 	}
@@ -108,5 +133,36 @@ func TestEditorDraftAndSimulationThroughProtectedRoutes(t *testing.T) {
 	}
 	if count, err := s.Client.Run.Query().Count(ctx); err != nil || count != 0 {
 		t.Fatalf("simulation queued real actions: count %d, error %v", count, err)
+	}
+	jira, err := s.SaveConnection(ctx, model.Connection{Name: "Jira", Provider: "jira", Config: map[string]string{}}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jiraForm := url.Values{
+		"_csrf": {csrf}, "name": {"Jira modes"}, "source_id": {fmt.Sprint(source)}, "branch.0.name": {"Main"},
+		"branch.0.action.0.connection_id": {fmt.Sprint(jira)}, "branch.0.action.0.subject": {"Test Jira"},
+		"branch.0.action.0.service_desk_id": {"10"}, "branch.0.action.0.request_type_id": {"20"}, "branch.0.action.0.queue_id": {"971"},
+	}
+	for _, hx := range []bool{false, true} {
+		for _, kind := range []string{"jira", "jira_request"} {
+			jiraForm.Set("branch.0.action.0.kind", kind)
+			w := request("POST", "/flows/editor", "admin@example.test", jiraForm, hx)
+			body := w.Body.String()
+			if w.Code != 200 || !strings.Contains(body, `value="Test Jira"`) || strings.Contains(body, `name="branch.0.action.0.queue_id"`) != (kind == "jira_request") || strings.Contains(body, `name="branch.0.action.0.board_id"`) != (kind == "jira") {
+				t.Fatalf("switching Jira mode %s (HTMX=%v) failed: status %d", kind, hx, w.Code)
+			}
+		}
+	}
+	w = request("POST", "/flows/0", "admin@example.test", jiraForm, false)
+	if w.Code != 303 {
+		t.Fatalf("saving Service Management without board failed: status %d", w.Code)
+	}
+	saved, err := s.Flow(ctx, intValue(strings.TrimPrefix(w.Header().Get("Location"), "/flows/")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := saved.Definition.Branches[0].Actions[0]
+	if a.Kind != "jira_request" || a.QueueID != 971 || a.BoardID != 0 || a.ServiceDeskID != "10" || a.RequestTypeID != "20" {
+		t.Fatalf("saved Jira destination differs: %+v", a)
 	}
 }

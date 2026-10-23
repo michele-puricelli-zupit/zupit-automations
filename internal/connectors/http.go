@@ -7,12 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/zupit-it/zupit-automations/internal/logging"
 	"github.com/zupit-it/zupit-automations/internal/model"
 	"github.com/zupit-it/zupit-automations/internal/store"
 	"golang.org/x/oauth2"
@@ -20,11 +22,17 @@ import (
 
 type Failure struct {
 	Message                    string
+	HTTPStatus                 int
+	cause                      error
 	Retryable, Auth, Uncertain bool
 	After                      time.Duration
 }
 
 func (e *Failure) Error() string { return e.Message }
+func (e *Failure) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("reason", e.Message), slog.Int("http_status", e.HTTPStatus),
+		slog.Bool("auth", e.Auth), slog.Bool("retryable", e.Retryable), slog.Bool("uncertain", e.Uncertain), logging.Error(e.cause))
+}
 func Classify(err error) *Failure {
 	var f *Failure
 	if errors.As(err, &f) {
@@ -70,12 +78,11 @@ func (c *Clients) do(ctx context.Context, client *http.Client, method, endpoint 
 		if errors.As(err, &failure) {
 			return failure
 		}
-		return &Failure{Message: "Connessione al servizio interrotta", Retryable: !mutating, Uncertain: mutating}
+		return &Failure{Message: "Connessione al servizio interrotta", Retryable: !mutating, Uncertain: mutating, cause: err}
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
-		f := &Failure{Message: fmt.Sprintf("Il servizio ha risposto HTTP %d", response.StatusCode)}
+		f := &Failure{Message: fmt.Sprintf("Il servizio ha risposto HTTP %d", response.StatusCode), HTTPStatus: response.StatusCode}
 		if response.StatusCode == 401 || response.StatusCode == 403 {
 			f.Auth = true
 		}
@@ -89,6 +96,28 @@ func (c *Clients) do(ctx context.Context, client *http.Client, method, endpoint 
 		}
 		if response.StatusCode == 404 {
 			f.Message = "Risorsa non trovata (HTTP 404)"
+		}
+		if response.StatusCode == http.StatusForbidden && strings.HasPrefix(endpoint, gmailBase+"/") {
+			var google struct {
+				Error struct {
+					Message string `json:"message"`
+					Errors  []struct {
+						Reason string `json:"reason"`
+					} `json:"errors"`
+				} `json:"error"`
+			}
+			if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&google) == nil {
+				for _, e := range google.Error.Errors {
+					switch {
+					case e.Reason == "accessNotConfigured":
+						f.Message, f.Auth = "Abilitare Gmail API nel progetto Google Cloud del client OAuth, poi verificare nuovamente la connessione", false
+					case endpoint == gmailBase+"/watch" && e.Reason == "forbidden" && strings.Contains(google.Error.Message, "Error sending test message to Cloud PubSub ") && strings.Contains(google.Error.Message, "User not authorized"):
+						f.Message, f.Auth = "Gmail non può pubblicare sul topic Pub/Sub: assegnare Pub/Sub Publisher a gmail-api-push@system.gserviceaccount.com sul topic configurato", false
+					}
+				}
+			}
+		} else {
+			_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
 		}
 		return f
 	}

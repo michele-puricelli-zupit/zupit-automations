@@ -10,7 +10,7 @@
         {
           "field": "from",
           "operator": "equals",
-          "value": "DA_CONFIGURARE",
+          "value": "servicedesk4@siag.it",
           "ignore_case": true
         },
         {
@@ -55,7 +55,7 @@
       {
         "name": "ticket_url",
         "source": "body",
-        "pattern": "(?i)Accedi\\s+al\\s+ticket\\s*\\((https?://[^\\s)]+)\\)",
+        "pattern": "(?i)Accedi[\\s\\x{00a0}]+al[\\s\\x{00a0}]+ticket[\\s\\x{00a0}]*(?:[A-Z][A-Z0-9]*-[0-9]+[\\s\\x{00a0}]*)?\\((https?://[^\\s)]+)\\)",
         "required": false
       }
     ],

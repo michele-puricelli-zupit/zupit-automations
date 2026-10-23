@@ -8,6 +8,7 @@ import (
 type Message struct {
 	ID         string    `json:"id"`
 	From       string    `json:"from"`
+	ReplyTo    string    `json:"reply_to,omitempty"`
 	To         string    `json:"to"`
 	Subject    string    `json:"subject"`
 	Body       string    `json:"body"`
@@ -41,6 +42,7 @@ type Action struct {
 	ConnectionID  int       `json:"connection_id"`
 	Project       string    `json:"project,omitempty"`
 	BoardID       int       `json:"board_id,omitempty"`
+	QueueID       int       `json:"queue_id,omitempty"`
 	IssueType     string    `json:"issue_type,omitempty"`
 	Reporter      string    `json:"reporter,omitempty"`
 	ServiceDeskID string    `json:"service_desk_id,omitempty"`

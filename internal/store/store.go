@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -98,6 +99,7 @@ func (s *Store) SaveConnection(ctx context.Context, c model.Connection, secret [
 			return c.ID, err
 		}
 	}
+	slog.InfoContext(ctx, "Connessione salvata: verificarla prima dell’uso", "event", "connection.saved", "connection_id", c.ID, "provider", c.Provider)
 	return c.ID, nil
 }
 func (s *Store) SaveSecret(ctx context.Context, id int, plain []byte) error {
@@ -119,6 +121,9 @@ func (s *Store) Secret(ctx context.Context, id int) ([]byte, error) {
 }
 func (s *Store) ConnectionState(ctx context.Context, id int, status, message string) error {
 	_, err := s.Client.Connection.UpdateOneID(id).SetStatus(status).SetError(message).Save(ctx)
+	if err == nil {
+		slog.InfoContext(ctx, "Stato connessione aggiornato", "event", "connection.state_changed", "connection_id", id, "status", status)
+	}
 	if err == nil && status == "paused" {
 		err = s.Notify(ctx, fmt.Sprintf("connection:%d:%s", id, message), fmt.Sprintf("Connessione #%d sospesa: %s. Ricollegarla dall’interfaccia.", id, message))
 	}
@@ -129,7 +134,11 @@ func (s *Store) Watch(ctx context.Context, id int, history string, expires time.
 	if initial {
 		u.SetHistoryID(history).SetCutover(time.Now().UTC())
 	}
-	return u.Exec(ctx)
+	err := u.Exec(ctx)
+	if err == nil {
+		slog.InfoContext(ctx, "Notifiche Gmail registrate", "event", "gmail.watch_registered", "connection_id", id, "expires_at", expires, "initial", initial)
+	}
+	return err
 }
 func asFlow(f *dbent.Flow) model.Flow {
 	r := model.Flow{ID: f.ID, Name: f.Name, SourceID: f.SourceID, Enabled: f.Enabled, Definition: f.Definition}
@@ -224,6 +233,7 @@ func (s *Store) SaveFlow(ctx context.Context, f model.Flow) (int, error) {
 		if err != nil {
 			return 0, err
 		}
+		slog.InfoContext(ctx, "Flusso salvato", "event", "flow.saved", "flow_id", row.ID, "connection_id", f.SourceID, "enabled", f.Enabled, "activated_at", row.ActivatedAt)
 		return row.ID, nil
 	}
 	old, err := s.Flow(ctx, f.ID)
@@ -234,7 +244,11 @@ func (s *Store) SaveFlow(ctx context.Context, f model.Flow) (int, error) {
 	if f.Enabled && (!old.Enabled || old.SourceID != f.SourceID) {
 		u.SetActivatedAt(time.Now())
 	}
-	return f.ID, u.Exec(ctx)
+	row, err := u.Save(ctx)
+	if err == nil {
+		slog.InfoContext(ctx, "Flusso salvato", "event", "flow.saved", "flow_id", f.ID, "connection_id", f.SourceID, "enabled", f.Enabled, "activated_at", row.ActivatedAt)
+	}
+	return f.ID, err
 }
 
 // Ingest persists both the mailbox checkpoint and all independent flow runs atomically.
@@ -248,6 +262,14 @@ func (s *Store) Ingest(ctx context.Context, source int, messages []model.Message
 	if err != nil {
 		return err
 	}
+	type evaluation struct {
+		runID, flowID             int
+		messageID, status, reason string
+		actions                   int
+		receivedAt                time.Time
+	}
+	var decisions []evaluation
+	inserted, duplicates, beforeActivation := 0, 0, 0
 	for _, m := range messages {
 		var exists bool
 		exists, err = tx.Inbox.Query().Where(func(sel *entsql.Selector) {
@@ -257,14 +279,17 @@ func (s *Store) Ingest(ctx context.Context, source int, messages []model.Message
 			return err
 		}
 		if exists {
+			duplicates++
 			continue
 		}
 		in, err := tx.Inbox.Create().SetSourceID(source).SetMessageID(m.ID).SetMessage(m).SetReceivedAt(m.ReceivedAt).Save(ctx)
 		if err != nil {
 			return err
 		}
+		inserted++
 		for _, f := range flows {
 			if f.ActivatedAt != nil && m.ReceivedAt.Before(*f.ActivatedAt) {
+				beforeActivation++
 				continue
 			}
 			actions, reason, parseErr := engine.Plan(f.Definition, m)
@@ -278,6 +303,16 @@ func (s *Store) Ingest(ctx context.Context, source int, messages []model.Message
 			if err != nil {
 				return err
 			}
+			decision := "actions_queued"
+			if parseErr != nil {
+				decision = "planning_failed"
+			} else if len(actions) == 0 {
+				decision = "no_matching_branch"
+				if reason == "non corrisponde al filtro" {
+					decision = "filter_mismatch"
+				}
+			}
+			decisions = append(decisions, evaluation{r.ID, f.ID, m.ID, status, decision, len(actions), m.ReceivedAt})
 			if f.Definition.Comparison != nil {
 				if err = tx.Comparison.Create().SetRunID(r.ID).SetResult(model.ComparisonResult{}).Exec(ctx); err != nil {
 					return err
@@ -312,7 +347,24 @@ func (s *Store) Ingest(ctx context.Context, source int, messages []model.Message
 	if err = tx.Connection.UpdateOneID(source).SetHistoryID(history).Exec(ctx); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	for _, decision := range decisions {
+		level := slog.LevelInfo
+		if decision.status == "failed" {
+			level = slog.LevelError
+		}
+		slog.Log(ctx, level, "Email valutata: esecuzione registrata", "event", "flow.evaluated", "connection_id", source,
+			"message_id", decision.messageID, "flow_id", decision.flowID, "run_id", decision.runID,
+			"status", decision.status, "decision", decision.reason, "action_count", decision.actions, "received_at", decision.receivedAt)
+	}
+	if len(messages) > 0 {
+		slog.InfoContext(ctx, "Email Gmail acquisite", "event", "gmail.ingested", "connection_id", source,
+			"candidates", len(messages), "inserted", inserted, "duplicates", duplicates,
+			"active_flows", len(flows), "skipped_before_activation", beforeActivation)
+	}
+	return nil
 }
 
 func (s *Store) Notify(ctx context.Context, key, body string) error {

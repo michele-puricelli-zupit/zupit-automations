@@ -16,6 +16,7 @@ import (
 	"github.com/zupit-it/zupit-automations/internal/auth"
 	"github.com/zupit-it/zupit-automations/internal/connectors"
 	"github.com/zupit-it/zupit-automations/internal/engine"
+	"github.com/zupit-it/zupit-automations/internal/logging"
 	"github.com/zupit-it/zupit-automations/internal/model"
 	"github.com/zupit-it/zupit-automations/internal/store"
 	"github.com/zupit-it/zupit-automations/internal/views"
@@ -82,7 +83,7 @@ func (s *Server) Handler() http.Handler {
 }
 func (s *Server) security(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com; object-src 'none'")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		w.Header().Set("X-Frame-Options", "DENY")
@@ -109,21 +110,25 @@ func (s *Server) data(r *http.Request, active, title string) (views.Data, error)
 func (s *Server) render(w http.ResponseWriter, r *http.Request, c templ.Component) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := c.Render(r.Context(), w); err != nil {
-		s.Log.Error("rendering pagina fallito")
+		s.Log.Error("Rendering pagina fallito", "event", "http.render_failed", "method", r.Method, "path", r.URL.Path, logging.Error(err))
 	}
 }
-func (s *Server) fail(w http.ResponseWriter, err error) {
+func (s *Server) fail(w http.ResponseWriter, r *http.Request, err error) {
 	if dbent.IsNotFound(err) {
 		http.Error(w, "Risorsa non trovata", 404)
 		return
 	}
-	s.Log.Error("operazione database fallita")
+	route := r.Pattern
+	if ctx := chi.RouteContext(r.Context()); ctx != nil {
+		route = ctx.RoutePattern()
+	}
+	s.Log.Error("Operazione applicativa fallita", "event", "http.operation_failed", "method", r.Method, "route", route, logging.Error(err))
 	http.Error(w, "Operazione non riuscita. Riprovare.", 500)
 }
 func (s *Server) connections(w http.ResponseWriter, r *http.Request) {
 	d, err := s.data(r, "connections", "Connessioni")
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	s.render(w, r, views.Page(d))
@@ -131,13 +136,13 @@ func (s *Server) connections(w http.ResponseWriter, r *http.Request) {
 func (s *Server) connectionForm(w http.ResponseWriter, r *http.Request) {
 	d, err := s.data(r, "connections", "Connessione")
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	if id := intValue(chi.URLParam(r, "id")); id > 0 {
 		d.Connection, err = s.Store.Connection(r.Context(), id)
 		if err != nil {
-			s.fail(w, err)
+			s.fail(w, r, err)
 			return
 		}
 	} else {
@@ -156,7 +161,7 @@ func (s *Server) connectionForm(w http.ResponseWriter, r *http.Request) {
 func (s *Server) saveConnection(w http.ResponseWriter, r *http.Request) {
 	d, err := s.data(r, "connections", "Connessione")
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	if err = r.ParseForm(); err != nil {
@@ -192,7 +197,7 @@ func (s *Server) saveConnection(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.Store.SaveConnection(r.Context(), c, secret)
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("/connections/%d", id), 303)
@@ -201,34 +206,39 @@ func (s *Server) verifyConnection(w http.ResponseWriter, r *http.Request) {
 	id := intValue(chi.URLParam(r, "id"))
 	c, err := s.Store.Connection(r.Context(), id)
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
-	err = s.Clients.Verify(r.Context(), c)
+	verifyErr := s.Clients.Verify(r.Context(), c)
 	message := ""
 	state := "ready"
-	if err != nil {
+	if verifyErr != nil {
 		state = "pending"
-		message = connectors.Classify(err).Message
-		if c.Provider == "gmail" && connectors.Classify(err).Auth {
+		message = connectors.Classify(verifyErr).Message
+		if c.Provider == "gmail" && connectors.Classify(verifyErr).Auth {
 			state = "paused"
 		}
 	}
 	if err = s.Store.ConnectionState(r.Context(), id, state, message); err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
+	}
+	if verifyErr != nil {
+		s.Log.Warn("Verifica connessione fallita: aprire Connessioni per correggere la configurazione", "event", "connection.verify_failed", "connection_id", id, "provider", c.Provider, "status", state, logging.Error(verifyErr))
+	} else {
+		s.Log.Info("Verifica connessione riuscita", "event", "connection.verified", "connection_id", id, "provider", c.Provider)
 	}
 	http.Redirect(w, r, "/connections", 303)
 }
 func (s *Server) flows(w http.ResponseWriter, r *http.Request) {
 	d, err := s.data(r, "flows", "Flussi")
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	d.Flows, err = s.Store.Flows(r.Context())
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	s.render(w, r, views.Page(d))
@@ -236,13 +246,13 @@ func (s *Server) flows(w http.ResponseWriter, r *http.Request) {
 func (s *Server) flowForm(w http.ResponseWriter, r *http.Request) {
 	d, err := s.data(r, "editor", "Editor del flusso")
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	if id := intValue(chi.URLParam(r, "id")); id > 0 {
 		d.Flow, err = s.Store.Flow(r.Context(), id)
 		if err != nil {
-			s.fail(w, err)
+			s.fail(w, r, err)
 			return
 		}
 	} else {
@@ -265,7 +275,7 @@ func (s *Server) editor(w http.ResponseWriter, r *http.Request) {
 	}
 	d, err := s.data(r, "editor", "Editor del flusso")
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	d.Flow = parseFlow(r.Form)
@@ -294,6 +304,7 @@ func (s *Server) validateDestinations(r *http.Request, f model.Flow) error {
 		for _, a := range b.Actions {
 			if a.Kind != "ignore" {
 				if err := s.Clients.VerifyAction(r.Context(), a); err != nil {
+					s.Log.Warn("Destinazione del flusso non verificata: attivazione rifiutata", "event", "flow.destination_failed", "flow_id", f.ID, "connection_id", a.ConnectionID, "action", a.Kind, logging.Error(err))
 					return fmt.Errorf("destinazione del ramo %s non verificata: %s", b.Name, connectors.Classify(err).Message)
 				}
 			}
@@ -319,7 +330,7 @@ func (s *Server) saveFlow(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		d, e := s.data(r, "editor", "Editor del flusso")
 		if e != nil {
-			s.fail(w, e)
+			s.fail(w, r, e)
 			return
 		}
 		d.Flow = f
@@ -332,7 +343,7 @@ func (s *Server) saveFlow(w http.ResponseWriter, r *http.Request) {
 func (s *Server) toggle(w http.ResponseWriter, r *http.Request) {
 	f, err := s.Store.Flow(r.Context(), intValue(chi.URLParam(r, "id")))
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	f.Enabled = !f.Enabled
@@ -345,7 +356,7 @@ func (s *Server) toggle(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		d, e := s.data(r, "flows", "Flussi")
 		if e != nil {
-			s.fail(w, e)
+			s.fail(w, r, e)
 			return
 		}
 		d.Flows, _ = s.Store.Flows(r.Context())
@@ -358,12 +369,12 @@ func (s *Server) toggle(w http.ResponseWriter, r *http.Request) {
 func (s *Server) simulate(w http.ResponseWriter, r *http.Request) {
 	d, err := s.data(r, "simulate", "Simulazione")
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	d.Flow, err = s.Store.Flow(r.Context(), intValue(chi.URLParam(r, "id")))
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	if r.Method == "POST" {
@@ -387,12 +398,12 @@ func (s *Server) simulate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) runs(w http.ResponseWriter, r *http.Request) {
 	d, err := s.data(r, "runs", "Esecuzioni")
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	d.Runs, err = s.Store.Runs(r.Context())
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	s.render(w, r, views.Page(d))
@@ -400,12 +411,12 @@ func (s *Server) runs(w http.ResponseWriter, r *http.Request) {
 func (s *Server) run(w http.ResponseWriter, r *http.Request) {
 	d, err := s.data(r, "runs", "Dettaglio esecuzione")
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	d.Run, err = s.Store.Run(r.Context(), intValue(chi.URLParam(r, "id")))
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	s.render(w, r, views.Page(d))
@@ -414,7 +425,7 @@ func (s *Server) retry(w http.ResponseWriter, r *http.Request) {
 	id := intValue(chi.URLParam(r, "id"))
 	row, err := s.Store.Client.Step.Get(r.Context(), id)
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	if row.Status == "uncertain" && r.FormValue("confirmed") != "yes" {
@@ -431,7 +442,7 @@ func (s *Server) resolve(w http.ResponseWriter, r *http.Request) {
 	id := intValue(chi.URLParam(r, "id"))
 	row, err := s.Store.Client.Step.Get(r.Context(), id)
 	if err != nil {
-		s.fail(w, err)
+		s.fail(w, r, err)
 		return
 	}
 	if err = s.Store.Retry(r.Context(), id, true, r.FormValue("reference")); err != nil {

@@ -95,15 +95,15 @@ func provider(s string) string {
 func action(s string) string {
 	switch s {
 	case "jira":
-		return "Crea ticket Jira"
+		return "Jira Board · crea un ticket di lavoro"
 	case "jira_request":
-		return "Crea richiesta Service Management"
+		return "Jira Service Management · apri una richiesta di assistenza"
 	case "slack":
-		return "Aggiungi elemento Slack List"
+		return "Slack · aggiungi un elemento a una lista"
 	case "forward":
-		return "Inoltra email"
+		return "Email · inoltra il messaggio"
 	case "ignore":
-		return "Escludi con motivo"
+		return "Ignora l’email · nessuna azione"
 	}
 	return s
 }
@@ -135,3 +135,31 @@ func safeReference(v string) bool {
 }
 
 func choices(v ...string) []string { return v }
+
+func choiceLabel(value string) string {
+	labels := map[string]string{
+		"from":        "Mittente dell’email",
+		"reply_to":    "Indirizzo a cui rispondere",
+		"to":          "Destinatari dell’email",
+		"subject":     "Oggetto dell’email",
+		"body":        "Testo dell’email",
+		"id":          "Identificativo dell’email (avanzato)",
+		"received_at": "Data e ora di ricezione",
+		"equals":      "È esattamente uguale a",
+		"prefix":      "Inizia con",
+		"contains":    "Contiene il testo",
+		"regex":       "Segue un modello di testo (regex, avanzato)",
+		"text":        "Testo · parole e frasi",
+		"number":      "Numero · es. 10 oppure 2.5",
+		"boolean":     "Sì o no · true / false",
+		"option":      "Voce di un elenco · identificativo dell’opzione",
+		"user":        "Persona · identificativo utente",
+		"date":        "Data · formato AAAA-MM-GG",
+		"link":        "Collegamento web · URL completo",
+		"json":        "Dati strutturati JSON (avanzato)",
+	}
+	if label, ok := labels[value]; ok {
+		return label
+	}
+	return value
+}

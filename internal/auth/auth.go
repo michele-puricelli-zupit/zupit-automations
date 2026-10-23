@@ -16,6 +16,7 @@ import (
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/zupit-it/zupit-automations/internal/config"
+	"github.com/zupit-it/zupit-automations/internal/connectors"
 	"github.com/zupit-it/zupit-automations/internal/model"
 	"github.com/zupit-it/zupit-automations/internal/store"
 	"golang.org/x/oauth2"
@@ -176,8 +177,21 @@ func (m *Manager) Callback(w http.ResponseWriter, r *http.Request, purpose strin
 			http.Error(w, "Google non ha concesso l’accesso offline: ripetere il collegamento", 400)
 			return
 		}
-		if m.Connected == nil || m.Connected(r.Context(), a.ConnectionID, token) != nil {
+		if m.Connected == nil {
 			http.Error(w, "Collegamento incompleto: verificare Pub/Sub e riprovare dalla pagina Connessioni", 502)
+			return
+		}
+		if err = m.Connected(r.Context(), a.ConnectionID, token); err != nil {
+			failure := connectors.Classify(err)
+			state := "pending"
+			if failure.Auth {
+				state = "paused"
+			}
+			if err = m.Store.ConnectionState(r.Context(), a.ConnectionID, state, failure.Message); err != nil {
+				http.Error(w, "Impossibile salvare l’esito del collegamento", 500)
+				return
+			}
+			http.Error(w, "Collegamento incompleto: "+failure.Message, 502)
 			return
 		}
 		http.Redirect(w, r, "/connections", 303)

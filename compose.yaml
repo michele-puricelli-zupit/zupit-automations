@@ -37,6 +37,11 @@ services:
 
   app:
     <<: *image
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
     restart: unless-stopped
     read_only: true
     stop_grace_period: 60s

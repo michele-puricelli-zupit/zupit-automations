@@ -17,6 +17,33 @@ func issue() model.Action {
 func definition(branches ...model.Branch) model.Definition {
 	return model.Definition{Version: 1, Filter: all(), Branches: branches}
 }
+
+func TestJiraDestinationValidation(t *testing.T) {
+	request := model.Action{Kind: "jira_request", ConnectionID: 2, ServiceDeskID: "10", RequestTypeID: "20", Subject: "Test"}
+	for _, tt := range []struct {
+		name  string
+		edit  func(*model.Action)
+		valid bool
+	}{
+		{"request without board or queue", func(*model.Action) {}, true},
+		{"request with queue", func(a *model.Action) { a.QueueID = 971 }, true},
+		{"legacy request with board", func(a *model.Action) { a.BoardID = 42 }, true},
+		{"negative queue", func(a *model.Action) { a.QueueID = -1 }, false},
+		{"missing service desk", func(a *model.Action) { a.ServiceDeskID = "" }, false},
+		{"missing request type", func(a *model.Action) { a.RequestTypeID = "" }, false},
+		{"missing summary", func(a *model.Action) { a.Subject = "" }, false},
+		{"board ticket", func(a *model.Action) { *a = issue() }, true},
+		{"board ticket without board", func(a *model.Action) { *a = issue(); a.BoardID = 0 }, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			a := request
+			tt.edit(&a)
+			if err := Validate(definition(branch("Jira", all(), a))); (err == nil) != tt.valid {
+				t.Fatalf("valid=%v, error=%v", tt.valid, err)
+			}
+		})
+	}
+}
 func branch(name string, g model.Group, a model.Action) model.Branch {
 	return model.Branch{Name: name, When: g, Actions: []model.Action{a}}
 }

@@ -13,6 +13,13 @@
           "value": "jira",
           "ignore_case": true,
           "not": true
+        },
+        {
+          "field": "reply_to",
+          "operator": "contains",
+          "value": "jira",
+          "ignore_case": true,
+          "not": true
         }
       ]
     },

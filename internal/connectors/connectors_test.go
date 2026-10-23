@@ -37,6 +37,41 @@ func TestMIMEAndHTML(t *testing.T) {
 		t.Fatal("invalid RFC822 accepted")
 	}
 }
+
+func TestReplyToIsConsistentInSimulationAndGmail(t *testing.T) {
+	for _, tt := range []struct{ header, want string }{
+		{"", ""},
+		{"Jira <JIRA@zupit-pro.atlassian.net>", "jira@zupit-pro.atlassian.net"},
+		{"Team <TEAM@example.test>, User <USER@example.test>", "team@example.test, user@example.test"},
+	} {
+		t.Run(tt.header, func(t *testing.T) {
+			raw := "From: Support <support@example.test>\r\nSubject: Example\r\n"
+			if tt.header != "" {
+				raw += "Reply-To: " + tt.header + "\r\n"
+			}
+			simulated, err := ParseEmail(raw + "\r\nBody")
+			if err != nil || simulated.ReplyTo != tt.want {
+				t.Fatalf("simulation Reply-To=%q, want %q: %v", simulated.ReplyTo, tt.want, err)
+			}
+			client := &http.Client{Transport: transport(func(*http.Request) (*http.Response, error) {
+				payload := gmailMessage{ID: "test", InternalDate: "1792742400000", Payload: gmailPart{MimeType: "text/plain"}}
+				payload.Payload.Headers = []gmailHeader{{Name: "From", Value: "support@example.test"}, {Name: "Reply-To", Value: tt.header}}
+				payload.Payload.Body.Data = base64.RawURLEncoding.EncodeToString([]byte("Body"))
+				b, err := json.Marshal(payload)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return response(200, string(b)), nil
+			})}
+			c := &Clients{}
+			message, accepted, err := c.message(context.Background(), client, "test")
+			if err != nil || !accepted || message.ReplyTo != simulated.ReplyTo {
+				t.Fatalf("Gmail and simulation differ: %+v %v %v", message, accepted, err)
+			}
+		})
+	}
+}
+
 func TestHTTPFailureClassification(t *testing.T) {
 	for _, tt := range []struct {
 		code                   int
@@ -51,7 +86,7 @@ func TestHTTPFailureClassification(t *testing.T) {
 		c := &Clients{}
 		err := c.do(context.Background(), client, tt.method, "https://example.test", map[string]string{}, nil, &map[string]any{})
 		f := Classify(err)
-		if f.Retryable != tt.retry || f.Uncertain != tt.uncertain || f.Auth != tt.auth || strings.Contains(f.Message, "must-not-leak") {
+		if f.HTTPStatus != tt.code || f.Retryable != tt.retry || f.Uncertain != tt.uncertain || f.Auth != tt.auth || strings.Contains(f.Message, "must-not-leak") {
 			t.Fatalf("%d %s: %+v", tt.code, tt.method, f)
 		}
 		if tt.code == 429 && f.After != 2*time.Minute {
@@ -59,6 +94,30 @@ func TestHTTPFailureClassification(t *testing.T) {
 		}
 	}
 }
+
+func TestGmailConfigurationFailures(t *testing.T) {
+	for _, tt := range []struct {
+		name, endpoint, body, message string
+		auth                          bool
+	}{
+		{"API disabled", gmailBase + "/profile", `{"error":{"message":"private detail","errors":[{"reason":"accessNotConfigured"}]}}`, "Abilitare Gmail API nel progetto Google Cloud del client OAuth, poi verificare nuovamente la connessione", false},
+		{"publisher missing", gmailBase + "/watch", `{"error":{"message":"Error sending test message to Cloud PubSub projects/test/topics/gmail : User not authorized to perform this action.","errors":[{"reason":"forbidden"}]}}`, "Gmail non può pubblicare sul topic Pub/Sub: assegnare Pub/Sub Publisher a gmail-api-push@system.gserviceaccount.com sul topic configurato", false},
+		{"other forbidden", gmailBase + "/watch", `{"error":{"message":"private detail","errors":[{"reason":"forbidden"}]}}`, "Il servizio ha risposto HTTP 403", true},
+		{"other provider", "https://example.test/profile", `{"error":{"message":"private detail","errors":[{"reason":"accessNotConfigured"}]}}`, "Il servizio ha risposto HTTP 403", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &http.Client{Transport: transport(func(*http.Request) (*http.Response, error) {
+				return response(http.StatusForbidden, tt.body), nil
+			})}
+			c := &Clients{}
+			f := Classify(c.do(context.Background(), client, "GET", tt.endpoint, nil, nil, nil))
+			if f.Message != tt.message || f.Auth != tt.auth || f.Retryable || f.Uncertain {
+				t.Fatalf("configuration failure: %+v", f)
+			}
+		})
+	}
+}
+
 func TestJiraPreservesPayloadAndNeverRecreatesOnBoardFailure(t *testing.T) {
 	s := testutil.Database(t)
 	ctx := context.Background()

@@ -10,7 +10,7 @@ templ Page(d Data) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="htmx-config" content={ `{"includeIndicatorStyles":false,"allowEval":false}` }/>
-			<title>{ d.Title } · Zupit Automazioni</title>
+			<title>{ d.Title } · Smeesto</title>
 			<link rel="stylesheet" href="/static/app.css"/>
 			<script src="/static/htmx.min.js" defer>
 </script>
@@ -21,13 +21,11 @@ templ Page(d Data) {
 
 				<main id="main" class="login-wrap">
 					<div class="login-card">
-<span class="brand-mark">Z</span>
-<p class="eyebrow">ZUPIT · STRUMENTI DI TEAM</p>
-<h1>La posta arriva.<br/>Il lavoro prosegue.</h1>
-<p class="muted">Gmail, Jira e Slack in un unico flusso.<br/>Accedi con il tuo account Google aziendale.</p>
+<span class="brand-mark">S</span>
+<h1>Smeesto</h1>
+<p class="muted">Accedi con il tuo account Google aziendale.</p>
 <a class="button primary login-button" href="/auth/login">Accedi con Google <span aria-hidden="true">↗</span>
 </a>
-<p class="fine">Accesso riservato ai domini Workspace autorizzati.</p>
 </div>
 				</main>
 			} else {
@@ -35,11 +33,10 @@ templ Page(d Data) {
 				<div class="shell">
 					<aside class="sidebar">
 <a class="brand" href="/flows">
-<span class="brand-mark">Z</span>
-<span>Zupit<small>Automazioni</small>
+<span class="brand-mark">S</span>
+<span>Smeesto
 </span>
 </a>
-<p class="nav-label">WORKSPACE</p>
 <nav aria-label="Navigazione principale">
 						<a class={ navClass(d.Active, "flows")
 } href="/flows">
@@ -51,15 +48,12 @@ templ Page(d Data) {
 } href="/runs">
 <span aria-hidden="true">≡</span> Esecuzioni</a>
 					</nav>
-<div class="sidebar-note">
-<span class="live-dot">
-</span> Ricezione a eventi<p>Gmail → Jira / Slack</p>
-</div>
 <div class="profile">
 <span class="avatar">{ initial(d.User.Name)
 }</span>
 <div>
 <strong>{ d.User.Name }</strong>
+<small>{ d.User.Email }</small>
 <small>
 if d.User.Admin {
 <span>Amministratore</span>
@@ -74,12 +68,10 @@ if d.User.Admin {
 </form>
 </aside>
 					<main id="main" class="workspace">
-<header class="topbar">
-<span>Strumenti di team <span class="divider">/</span> { d.Title }</span>
-<span class="fine">{ d.User.Email }</span>
-</header>
 <div class="content">
-						@Feedback(d)
+						if d.Active != "editor" {
+							@Feedback(d)
+						}
 						switch d.Active {
 
 							case "connections":
@@ -102,8 +94,6 @@ if d.User.Admin {
 								@Flows(d)
 							}
 						</div>
-<footer class="footer">Zupit Automazioni <span>Elaborazioni tracciate, dati nei servizi del team.</span>
-</footer>
 </main>
 				</div>
 			}
@@ -127,12 +117,13 @@ templ Badge(value string) {
  <span class={ "badge " + value }>{ status(value)
 }</span>
 }
-templ Heading(label, title, description string) {
+templ Heading(title, description string) {
  <div class="heading">
 <div>
-<p class="eyebrow">{ label }</p>
 <h1>{ title }</h1>
+if description != "" {
 <p class="muted">{ description }</p>
+}
 </div>{ children... }</div>
 }
 templ CSRF(token string) {
@@ -141,23 +132,32 @@ templ CSRF(token string) {
 
 templ Flows(d Data) {
 
-	@Heading("IL LAVORO, IN AUTOMATICO", "Flussi", "Dall’email all’azione giusta. Ogni passaggio resta tracciato.") {
+	@Heading("Flussi", "") {
 
 		if d.User.Admin {
- <a class="button primary" href="/flows/new">＋ Nuovo flusso</a>
+<form class="preset-picker" method="get" action="/flows/new">
+<label class="field">
+<span>Modello del nuovo flusso</span>
+<select name="template">
+<option value="">Flusso vuoto</option>
+<option value="srt">SRT / Remedy</option>
+<option value="cup">CUP</option>
+<option value="kit">key2help</option>
+<option value="support">Support KR</option>
+</select>
+</label>
+<button class="button primary" type="submit">Crea flusso</button>
+</form>
 }
-	}
-	if d.User.Admin {
-		<div class="preset-links"><span>Parti da un modello da completare:</span><a href="/flows/new?template=srt">SRT / Remedy</a><a href="/flows/new?template=cup">CUP</a><a href="/flows/new?template=kit">key2help</a><a href="/flows/new?template=support">Support KR</a></div>
 	}
 	<div class="stats">
 <div>
-<span>FLUSSI CONFIGURATI</span>
+<span>FLUSSI</span>
 <strong>{ ID(len(d.Flows))
 }</strong>
 </div>
 <div>
-<span>FLUSSI ATTIVI</span>
+<span>ATTIVI</span>
 <strong>{ ID(enabledCount(d.Flows))
 }</strong>
 </div>
@@ -171,13 +171,7 @@ templ Flows(d Data) {
 
 		<div class="empty panel">
 <span class="empty-icon" aria-hidden="true">⇄</span>
-<h2>Il primo flusso parte da una casella</h2>
-<p>Collega Gmail, configura una destinazione e definisci quali email elaborare.</p>
-<div class="steps">
-<span>1. Connessioni</span>
-<span>2. Condizioni e azioni</span>
-<span>3. Simula e attiva</span>
-</div>
+<h2>Nessun flusso</h2>
 <a class="button secondary" href="/connections">Vai alle connessioni</a>
 </div>
 	} else {
@@ -197,11 +191,8 @@ for _, f := range d.Flows {
  <tr>
 <td>
 <strong>{ f.Name }</strong>
-<small>{ ID(len(f.Definition.Branches))
-} rami · { ID(len(f.Definition.Extractors))
-} estrazioni</small>
 if f.Definition.Comparison != nil {
-<small>A standard + B Jev · confronto in DM</small>
+<small>Confronto Jev</small>
 }
 </td>
 <td>{ sourceName(f.SourceID, d.Connections)
@@ -235,37 +226,32 @@ if f.Enabled {
 </table>
 </div>
 	}
-	<p class="fine note">Ogni email può attivare più flussi. All’interno di un flusso viene eseguito il primo ramo corrispondente.</p>
 }
 func enabledCount(flows []model.Flow) int { n:=0;for _,f:=range flows{if f.Enabled{n++}};return n }
 func readyCount(connections []model.Connection) int { n:=0;for _,c:=range connections{if c.Status=="ready"{n++}};return n }
 
 templ Connections(d Data) {
 
-	@Heading("SERVIZI DEL TEAM", "Connessioni", "Account condivisi e destinazioni, separati dal tuo accesso personale.")
+	@Heading("Connessioni", "")
 	if d.User.Admin {
  <div class="connect-options">
 <a href="/connections/new?provider=gmail">
 <span class="provider gmail">G</span>
 <strong>Collega Gmail</strong>
-<small>Casella Workspace e Pub/Sub</small>
 </a>
 <a href="/connections/new?provider=jira">
 <span class="provider jira">J</span>
 <strong>Collega Jira</strong>
-<small>Progetti e board del team</small>
 </a>
 <a href="/connections/new?provider=slack">
 <span class="provider slack">S</span>
 <strong>Collega Slack</strong>
-<small>Liste e avvisi operativi</small>
 </a>
 </div>
 }
 	if len(d.Connections) == 0 {
  <div class="panel empty">
 <h2>Nessuna connessione configurata</h2>
-<p>Gmail riceve le email; Jira e Slack le trasformano in lavoro per il team.</p>
 </div>
 } else {
 
@@ -313,7 +299,6 @@ if c.Provider=="gmail" {
 </table>
 </div>
 	}
-	<p class="fine note">I segreti salvati non vengono mai mostrati. Per sostituirli, inserisci un nuovo valore.</p>
 }
 templ Input(name,label,value,kind string,required bool) {
 
@@ -330,7 +315,7 @@ templ Textarea(name,label,value string) {
 }
 templ ConnectionForm(d Data) {
 
-	@Heading("CONFIGURAZIONE", "Connessione "+provider(d.Connection.Provider), "Le credenziali sono disponibili soltanto al servizio di elaborazione.") {
+	@Heading("Connessione "+provider(d.Connection.Provider), "") {
 <a class="button secondary" href="/connections">Torna alle connessioni</a>
 }
 	<form class="panel form-panel" method="post" action={ path("/connections/",d.Connection.ID)
@@ -343,7 +328,7 @@ templ ConnectionForm(d Data) {
 			@Input("email","Indirizzo della casella Workspace",d.Connection.Config["email"],"email",true)
 			@Input("topic","Topic Pub/Sub · projects/PROGETTO/topics/NOME",d.Connection.Config["topic"],"text",true)
 			@Input("subscription","Subscription · projects/PROGETTO/subscriptions/NOME",d.Connection.Config["subscription"],"text",true)
-			<p class="hint">Salva e poi autorizza Google scegliendo questa casella. Il server usa credenziali Google Cloud dedicate per ricevere gli eventi Pub/Sub.</p>
+			<p class="hint">Salva, poi premi «Autorizza Google» usando la casella indicata.</p>
 		} else if d.Connection.Provider=="jira" {
 
 			@Input("url","URL Jira Cloud",d.Connection.Config["url"],"url",true)
@@ -361,7 +346,7 @@ templ ConnectionForm(d Data) {
 <small>Lascia vuoto per mantenere il token esistente.</small>
 </label>
 			@Input("alert_channel","ID canale per gli avvisi operativi · facoltativo",d.Connection.Config["alert_channel"],"text",false)
-			<p class="hint">Il bot deve avere accesso alle liste e al canale operativo. Configura il canale avvisi su una sola connessione Slack.</p>
+			<p class="hint">Il bot deve accedere alle liste e al canale avvisi. Configura il canale su una sola connessione.</p>
 		}
 		<div class="form-footer">
 <button class="button primary" type="submit">Salva connessione</button>
@@ -381,8 +366,7 @@ templ FlowEditor(d Data) {
 		@CSRF(d.CSRF)
 <input type="hidden" name="id" value={ ID(d.Flow.ID)
 }/>
-		@Heading("REGOLE DEL FLUSSO", "Editor del flusso", "Scegli la sorgente, riconosci le email e definisci cosa deve accadere.") {
-<a href="/flows" class="button secondary">Annulla</a>
+		@Heading("Editor del flusso", "") {
 <button class="button primary" type="submit">Salva flusso</button>
 }
 		@Feedback(d)
@@ -394,7 +378,7 @@ templ FlowEditor(d Data) {
 <label class="field">
 <span>Connessione Gmail</span>
 <select name="source_id" required>
-<option value="">Scegli una casella</option>
+<option value="">Scegli la casella da cui leggere le email</option>
 for _,c:=range d.Connections {
 if c.Provider=="gmail" {
 <option value={ ID(c.ID)
@@ -404,24 +388,24 @@ if c.Provider=="gmail" {
 </label>
 </div>
 <label class="check">
-<input name="enabled" type="checkbox" checked?={ d.Flow.Enabled }/> Attiva il flusso dopo il salvataggio e la verifica delle destinazioni</label>
+<input name="enabled" type="checkbox" checked?={ d.Flow.Enabled }/> Attiva al salvataggio: eseguirà azioni reali</label>
 </section>
 		@ComparisonEditor(d)
 		<section class="panel form-panel">
 <h2>
 <span class="section-number">2</span> Email da elaborare</h2>
-<p class="hint">Nessuna condizione significa tutte le email della casella. Usa i filtri per evitare attivazioni indesiderate.</p>
+<p class="hint">Ogni email è valutata da tutti i flussi attivi. Senza condizioni si elaborano tutte le email della casella.</p>
 @ConditionGroup("filter",d.Flow.Definition.Filter,d.Flow.Definition.Extractors)
 @EditorButton("filter","＋ Condizione")
 </section>
 		<section class="panel form-panel">
 <h2>
 <span class="section-number">3</span> Dati da estrarre</h2>
-<p class="hint">Regex Go/RE2. La prima cattura diventa la variabile; i gruppi nominati sono disponibili con il proprio nome. Un pattern vuoto copia il campo.</p>
+<details class="field-help"><summary>Come estrarre un dato</summary><p class="hint">Un modello vuoto copia tutto il campo. Con un’espressione regolare (Go/RE2), la prima cattura diventa la variabile; i gruppi nominati sono disponibili con il proprio nome.</p></details>
 			for i,e:=range d.Flow.Definition.Extractors {
 <div class="editor-row extract-row">
 @Input(key("extract",i,"name"),"Variabile",e.Name,"text",false)
-@FieldSelect(key("extract",i,"source"),"Campo sorgente",e.Source,nil)
+@FieldSelect(key("extract",i,"source"),"Da dove prendere il dato",e.Source,nil)
 @Input(key("extract",i,"pattern"),"Espressione regolare",e.Pattern,"text",false)
 <label class="check">
 <input type="checkbox" name={ key("extract",i,"required")
@@ -434,7 +418,7 @@ if c.Provider=="gmail" {
 		<section class="panel form-panel">
 <h2>
 <span class="section-number">4</span> Rami e azioni</h2>
-<p class="hint">Si esegue il primo ramo corrispondente, dall’alto verso il basso. Un ramo senza condizioni è il caso finale.</p>
+<p class="hint">Si esegue solo il primo ramo che corrisponde. Un ramo senza condizioni accetta tutte le email.</p>
 			for bi,b:=range d.Flow.Definition.Branches {
 
 				<div class="branch">
@@ -452,10 +436,10 @@ if c.Provider=="gmail" {
 			}
 			@EditorButton("branch","＋ Ramo")
 		</section>
-		<div class="panel callout">
-<strong>Valori dinamici</strong>
-<p>Usa <code>{ "{{ .subject }}" }</code>, <code>{ "{{ .from }}" }</code>, <code>{ "{{ .body }}" }</code> o una variabile estratta. Sono disponibili trim, lower, upper, replace e urlquery. La simulazione mostra i valori prima di qualsiasi scrittura.</p>
-</div>
+		<details class="panel form-panel">
+<summary>Usare i dati dell’email nelle azioni</summary>
+<p>Usa <code>{ "{{ .subject }}" }</code> per l’oggetto, <code>{ "{{ .from }}" }</code> per il mittente e <code>{ "{{ .body }}" }</code> per il testo, oppure una variabile estratta. Funzioni disponibili: trim, lower, upper, replace, urlquery.</p>
+</details>
 		<div class="editor-save">
 <a href="/flows">Annulla</a>
 <button class="button primary" type="submit">Salva flusso</button>
@@ -463,18 +447,18 @@ if c.Provider=="gmail" {
 	</form>
 }
 templ ComparisonEditor(d Data) {
-	<section class="panel form-panel">
-		<h2>Gestione del flusso · A/B</h2>
-		<label class="check"><input type="checkbox" name="comparison" checked?={ d.Flow.Definition.Comparison != nil }/> Affianca B con Jev e invia il confronto al mio DM Slack</label>
-		<p class="hint">A continua a eseguire le regole standard. B valuta le stesse email, anche quelle escluse da A, e propone un ramo configurato. Solo A crea ticket, elementi nelle liste o inoltri. Email e regole vengono inviate a TypeSafe quando abiliti B.</p>
+	<details class="panel form-panel" open?={ d.Flow.Definition.Comparison != nil }>
+		<summary>Confronto con Jev · facoltativo</summary>
+		<label class="check"><input type="checkbox" name="comparison" checked?={ d.Flow.Definition.Comparison != nil }/> Abilita il confronto e invia il report al mio DM Slack</label>
+		<p class="hint">Solo A esegue le azioni. Email e regole vengono inviate a TypeSafe; Jev propone un ramo (B), anche per le email escluse da A.</p>
 		if !d.JevReady {
-			<p class="hint">Per attivare B configura la chiave API TypeSafe sul server. Puoi già salvare la bozza.</p>
+			<p class="hint">Per attivare Jev serve la chiave API TypeSafe sul server.</p>
 		}
-		@Textarea("comparison.instructions", "Regole per Jev · descrivi ambito, rami ed esclusioni", comparisonConfig(d.Flow.Definition).Instructions)
+		@Textarea("comparison.instructions", "Regole per Jev", comparisonConfig(d.Flow.Definition).Instructions)
 		<div class="form-grid">
 			<label class="field"><span>Connessione Slack per il confronto</span>
 				<select name="comparison.slack_connection_id">
-					<option value="">Scegli una connessione Slack</option>
+					<option value="">Scegli Slack per il confronto</option>
 					for _, c := range d.Connections {
 						if c.Provider == "slack" {
 							<option value={ ID(c.ID) } selected?={ c.ID == comparisonConfig(d.Flow.Definition).SlackConnectionID }>{ c.Name }</option>
@@ -482,50 +466,50 @@ templ ComparisonEditor(d Data) {
 					}
 				</select>
 			</label>
-			@Input("comparison.slack_recipient", "Il tuo ID membro Slack U…/W… o DM personale D…", comparisonConfig(d.Flow.Definition).SlackRecipient, "text", false)
+			@Input("comparison.slack_recipient", "ID membro Slack o DM personale", comparisonConfig(d.Flow.Definition).SlackRecipient, "text", false)
 		</div>
-		<p class="hint">Slack → il tuo profilo → ⋯ / Altro → Copia ID membro. Il bot deve avere chat:write e im:write. I canali e i DM di gruppo sono esclusi. Senza la spunta rimane attiva solo A.</p>
-	</section>
+		<details class="field-help"><summary>Dove trovare l’ID Slack</summary><p class="hint">Profilo Slack → ⋯ → Copia ID membro (U…/W…). È accettato anche il DM personale del bot (D…). Il bot richiede chat:write e im:write.</p></details>
+	</details>
 }
 templ FieldSelect(name,label,value string,extractors []model.Extractor) {
 
 	<label class="field">
 <span>{ label }</span>
 <select name={ name }>
-for _,field:=range choices("from","to","subject","body","id","received_at") {
-<option value={ field } selected?={ value==field }>{ field }</option>
+for _,field:=range choices("from","reply_to","to","subject","body","id","received_at") {
+<option value={ field } selected?={ value==field }>{ choiceLabel(field) }</option>
 }
 for _,e:=range extractors {
-<option value={ e.Name } selected?={ value==e.Name }>{ e.Name }</option>
+<option value={ e.Name } selected?={ value==e.Name }>Dato estratto · { e.Name }</option>
 }
 if value!=""&&!knownField(value,extractors) {
-<option value={ value } selected>{ value }</option>
+<option value={ value } selected>Campo personalizzato · { value }</option>
 }</select>
 </label>
 }
-func knownField(s string,extractors []model.Extractor)bool{for _,v:=range []string{"from","to","subject","body","id","received_at"}{if s==v{return true}};for _,e:=range extractors{if e.Name==s{return true}};return false}
+func knownField(s string,extractors []model.Extractor)bool{for _,v:=range []string{"from","reply_to","to","subject","body","id","received_at"}{if s==v{return true}};for _,e:=range extractors{if e.Name==s{return true}};return false}
 templ ConditionGroup(prefix string,g model.Group,extractors []model.Extractor) {
 
-	<label class="field compact">
-<span>Condizioni</span>
+	<label class="field">
+<span>Quali condizioni devono essere vere?</span>
 <select name={ prefix+".mode" }>
-<option value="all" selected?={ g.Mode!="any" }>Tutte · AND</option>
-<option value="any" selected?={ g.Mode=="any" }>Almeno una · OR</option>
+<option value="all" selected?={ g.Mode!="any" }>Tutte le condizioni</option>
+<option value="any" selected?={ g.Mode=="any" }>Almeno una delle condizioni</option>
 </select>
 </label>
 	for i,c:=range g.Conditions {
 <div class="editor-row condition-row">
-@FieldSelect(key(prefix,i,"field"),"Campo",c.Field,extractors)
+@FieldSelect(key(prefix,i,"field"),"Informazione da controllare",c.Field,extractors)
 <label class="field">
-<span>Operatore</span>
+<span>Come confrontarla</span>
 <select name={ key(prefix,i,"operator")
 }>
 for _,op:=range choices("equals","prefix","contains","regex") {
 
-<option value={ op } selected?={ c.Operator==op }>{ op }</option>
+<option value={ op } selected?={ c.Operator==op }>{ choiceLabel(op) }</option>
 }</select>
 </label>
-@Input(key(prefix,i,"value"),"Valore",c.Value,"text",false)
+@Input(key(prefix,i,"value"),"Testo o valore da cercare",c.Value,"text",false)
 <label class="check">
 <input name={ key(prefix,i,"ignore_case")
 } type="checkbox" checked?={ c.IgnoreCase }/> Ignora maiuscole</label>
@@ -546,7 +530,7 @@ templ ActionEditor(d Data,bi,ai int,a model.Action) {
 </div>
 <div class="form-grid">
 <label class="field">
-<span>Tipo di azione</span>
+<span>Cosa deve fare l’automazione?</span>
 <select name={ key("branch",bi,"action",ai,"kind")
 } hx-post="/flows/editor" hx-trigger="change" hx-include="closest form" hx-target="#flow-editor" hx-swap="outerHTML">
 for _,kind:=range choices("jira","jira_request","slack","forward","ignore") {
@@ -560,7 +544,7 @@ for _,kind:=range choices("jira","jira_request","slack","forward","ignore") {
 <span>Connessione destinazione</span>
 <select name={ key("branch",bi,"action",ai,"connection_id")
 }>
-<option value="">Scegli una connessione</option>
+<option value="">Scegli la connessione { provider(providerFor(a.Kind)) } da usare</option>
 for _,c:=range d.Connections {
 if c.Provider==providerFor(a.Kind) {
 <option value={ ID(c.ID)
@@ -576,14 +560,19 @@ if c.Provider==providerFor(a.Kind) {
 if a.Kind=="jira" {
 @Input(key("branch",bi,"action",ai,"project"),"Chiave progetto Jira",a.Project,"text",false)
 @Input(key("branch",bi,"action",ai,"issue_type"),"ID tipo ticket",a.IssueType,"text",false)
+@Input(key("branch",bi,"action",ai,"board_id"),"ID board attesa",intValue(a.BoardID),"number",false)
 } else {
 @Input(key("branch",bi,"action",ai,"service_desk_id"),"ID Service Desk",a.ServiceDeskID,"text",false)
 @Input(key("branch",bi,"action",ai,"request_type_id"),"ID tipo richiesta",a.RequestTypeID,"text",false)
+@Input(key("branch",bi,"action",ai,"queue_id"),"ID coda attesa · facoltativo",intValue(a.QueueID),"number",false)
 }
-@Input(key("branch",bi,"action",ai,"board_id"),"ID board attesa",intValue(a.BoardID),"number",false)
 @Input(key("branch",bi,"action",ai,"reporter"),"Account ID richiedente · facoltativo",a.Reporter,"text",false)
 </div>
-<p class="hint">I campi devono soddisfare il filtro della board. Sprint e notifiche restano alle automazioni Jira.</p>
+if a.Kind=="jira" {
+<p class="hint">La board dipende dai campi del ticket; sprint e notifiche dalle automazioni Jira.</p>
+} else {
+<p class="hint">La coda è facoltativa e dipende dai campi della richiesta. Per verificarla serve l’accesso Jira come agente.</p>
+}
 		}
 		if a.Kind=="slack" {
 @Input(key("branch",bi,"action",ai,"list_id"),"ID Slack List",a.ListID,"text",false)
@@ -604,12 +593,12 @@ for fi,f:=range a.Fields {
 <div class="editor-row mapping-row">
 @Input(key("branch",bi,"action",ai,"field",fi,"field"),"ID campo / colonna",f.Field,"text",false)
 <label class="field">
-<span>Tipo</span>
+<span>Che tipo di dato inviare?</span>
 <select name={ key("branch",bi,"action",ai,"field",fi,"type")
 }>
 for _,typ:=range choices("text","number","boolean","option","user","date","link","json") {
 
-<option value={ typ } selected?={ f.Type==typ }>{ typ }</option>
+<option value={ typ } selected?={ f.Type==typ }>{ choiceLabel(typ) }</option>
 }</select>
 </label>
 @Input(key("branch",bi,"action",ai,"field",fi,"value"),"Valore o template",f.Value,"text",false)
@@ -624,12 +613,12 @@ func intValue(v int)string{if v==0{return ""};return ID(v)}
 
 templ Simulation(d Data) {
 
-	@Heading("NESSUNA SCRITTURA ESTERNA", "Simula · "+d.Flow.Name, "Verifica classificazione, dati estratti e azioni su un’email di esempio.") {
+	@Heading("Simula · "+d.Flow.Name, "Non invia email né crea ticket o elementi nelle liste.") {
 <a href={ templ.SafeURL(path("/flows/",d.Flow.ID))
 } class="button secondary">Modifica flusso</a>
 }
 	if d.Flow.Definition.Comparison != nil {
-		<p class="hint">Questa simulazione usa A. Il confronto B con Jev parte sulle nuove email ricevute dal flusso attivo.</p>
+		<p class="hint">La simulazione verifica solo le regole standard (A).</p>
 	}
 	<form class="panel form-panel" method="post" action={ path("/flows/",d.Flow.ID)+"/simulate" }>
 @CSRF(d.CSRF)
@@ -649,12 +638,11 @@ templ Simulation(d Data) {
 
 templ Runs(d Data) {
 
-	@Heading("TRACCIA OPERATIVA", "Esecuzioni", "Ultime 100 elaborazioni, inclusi errori ed esclusioni.")
+	@Heading("Esecuzioni", "Ultime 100 elaborazioni.")
 	<div id="runs-table" hx-get="/runs" hx-trigger="every 10s" hx-target="this" hx-select="#runs-table" hx-swap="outerHTML">
 		if len(d.Runs)==0 {
 <div class="panel empty">
-<h2>In attesa della prima email</h2>
-<p>Le esecuzioni compariranno qui quando una casella collegata riceverà nuovi messaggi.</p>
+<h2>Nessuna esecuzione</h2>
 </div>
 } else {
 <div class="panel table-wrap">
@@ -697,12 +685,12 @@ for _,r:=range d.Runs {
 templ ComparisonDetail(c model.Comparison, runID int) {
 	<section id="comparison-result" class="panel form-panel" hx-get={ path("/runs/", runID) } hx-trigger="every 10s" hx-select="#comparison-result" hx-swap="outerHTML">
 		<div class="action-heading"><h2>Confronto A/B · Jev</h2>@Badge(c.Status)</div>
-		<p class="hint">A esegue il flusso standard. B propone soltanto: nessuna scrittura su Jira, liste Slack o email. Qui sono conservati i piani valutati; gli esiti effettivi di A sono nelle azioni dell’esecuzione.</p>
+		<p class="hint">A esegue le azioni; B propone soltanto. Gli esiti effettivi sono riportati sotto.</p>
 		if c.Error != "" {
 			<p class="alert error">{ c.Error }</p>
 		}
 		if c.Reference != "" {
-			<p class="fine">Report inviato al DM personale: { c.Reference }</p>
+			<p class="fine">Report Slack: { c.Reference }</p>
 		}
 		if c.Result.Model != "" {
 			<p class="fine">{ comparisonInfo(c.Result) }</p>
@@ -713,7 +701,7 @@ templ ComparisonDetail(c model.Comparison, runID int) {
 
 templ RunDetail(d Data) {
 
-	@Heading("DETTAGLIO ESECUZIONE", d.Run.Subject, d.Run.FlowName+" · "+date(d.Run.CreatedAt)) {
+	@Heading(d.Run.Subject, d.Run.FlowName+" · "+date(d.Run.CreatedAt)) {
 <a class="button secondary" href="/runs">Tutte le esecuzioni</a>
 }
 	<div class="run-summary">

@@ -18,10 +18,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zupit-it/zupit-automations/internal/logging"
 	"github.com/zupit-it/zupit-automations/internal/model"
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/charset"
 	"golang.org/x/oauth2"
+	"log/slog"
 )
 
 const gmailBase = "https://gmail.googleapis.com/gmail/v1/users/me"
@@ -146,6 +148,8 @@ func (c *Clients) message(ctx context.Context, client *http.Client, id string) (
 		switch strings.ToLower(h.Name) {
 		case "from":
 			m.From = address(h.Value)
+		case "reply-to":
+			m.ReplyTo = addresses(h.Value)
 		case "to", "cc":
 			if m.To != "" {
 				m.To += ", "
@@ -269,7 +273,22 @@ func decodeHeader(value string) string {
 }
 
 // Sync uses Gmail history, not the order or completeness of Pub/Sub notifications.
-func (c *Clients) Sync(ctx context.Context, conn model.Connection) error {
+func (c *Clients) Sync(ctx context.Context, conn model.Connection) (err error) {
+	started := time.Now()
+	connectionID := conn.ID
+	pages, candidates := 0, 0
+	skipped, fullResync := false, false
+	defer func() {
+		level := slog.LevelInfo
+		if err != nil {
+			level = slog.LevelWarn
+			if errors.Is(ctx.Err(), context.Canceled) {
+				level = slog.LevelDebug
+			}
+		}
+		slog.Log(ctx, level, "Sincronizzazione Gmail conclusa", "event", "gmail.sync_completed", "connection_id", connectionID,
+			"duration_ms", time.Since(started).Milliseconds(), "history_pages", pages, "history_candidate_messages", candidates, "skipped", skipped, "full_resync", fullResync, "success", err == nil, logging.Error(err))
+	}()
 	unlock, err := c.Store.Lock(ctx, int64(2000000+conn.ID))
 	if err != nil {
 		return err
@@ -280,6 +299,7 @@ func (c *Clients) Sync(ctx context.Context, conn model.Connection) error {
 		return err
 	}
 	if conn.Status != "ready" || conn.HistoryID == "" {
+		skipped = true
 		return nil
 	}
 	client, err := c.gmailClient(ctx, conn.ID)
@@ -303,10 +323,13 @@ func (c *Clients) Sync(ctx context.Context, conn model.Connection) error {
 		endpoint := gmailBase + "/history?historyTypes=messageAdded&maxResults=50&startHistoryId=" + url.QueryEscape(conn.HistoryID) + "&pageToken=" + url.QueryEscape(page)
 		if err = c.do(ctx, client, "GET", endpoint, nil, nil, &out); err != nil {
 			if f := Classify(err); strings.Contains(f.Message, "404") {
+				fullResync = true
+				slog.WarnContext(ctx, "Checkpoint Gmail scaduto: avvio recupero dalla data di collegamento", "event", "gmail.history_expired", "connection_id", conn.ID)
 				return c.fullSync(ctx, conn, client)
 			}
 			return err
 		}
+		pages++
 		if out.HistoryID != "" {
 			latest = out.HistoryID
 		}
@@ -316,6 +339,7 @@ func (c *Clients) Sync(ctx context.Context, conn model.Connection) error {
 				ids = append(ids, added.Message.ID)
 			}
 		}
+		candidates += len(ids)
 		if err = c.saveMessages(ctx, conn, client, ids, conn.HistoryID); err != nil {
 			return err
 		}
@@ -344,7 +368,11 @@ func (c *Clients) saveMessages(ctx context.Context, conn model.Connection, clien
 			}
 			return err
 		}
-		if include && !m.ReceivedAt.Before(conn.Cutover) {
+		if !include {
+			slog.InfoContext(ctx, "Email esclusa dalla sorgente: inviata, bozza, spam o generata dall’app", "event", "gmail.message_skipped", "connection_id", conn.ID, "message_id", id, "reason", "ineligible_message")
+		} else if m.ReceivedAt.Before(conn.Cutover) {
+			slog.InfoContext(ctx, "Email precedente al collegamento della casella: nessuna elaborazione", "event", "gmail.message_skipped", "connection_id", conn.ID, "message_id", id, "reason", "before_connection_cutover")
+		} else {
 			messages = append(messages, m)
 		}
 	}
@@ -430,7 +458,7 @@ func ParseEmail(raw string) (model.Message, error) {
 	if date.IsZero() {
 		date = time.Now()
 	}
-	return model.Message{ID: m.Header.Get("Message-ID"), From: address(m.Header.Get("From")), To: addresses(m.Header.Get("To")), Subject: decodeHeader(m.Header.Get("Subject")), Body: body, ReceivedAt: date}, nil
+	return model.Message{ID: m.Header.Get("Message-ID"), From: address(m.Header.Get("From")), ReplyTo: addresses(m.Header.Get("Reply-To")), To: addresses(m.Header.Get("To")), Subject: decodeHeader(m.Header.Get("Subject")), Body: body, ReceivedAt: date}, nil
 }
 func mimeText(contentType, transfer string, r io.Reader) (string, error) {
 	typeName, params, err := mime.ParseMediaType(contentType)

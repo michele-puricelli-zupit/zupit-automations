@@ -1,0 +1,113 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: automations
+      POSTGRES_USER: automations
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - application
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automations -d automations"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    stop_grace_period: 60s
+
+  migrate:
+    image: ${APP_IMAGE_TAG:?Impostare APP_IMAGE_TAG}
+    command: ["/app/migrate"]
+    restart: "no"
+    read_only: true
+    environment:
+      DATABASE_URL_FILE: /run/secrets/database_url
+    secrets:
+      - database_url
+    networks:
+      - application
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  app:
+    image: ${APP_IMAGE_TAG:?Impostare APP_IMAGE_TAG}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+    read_only: true
+    stop_grace_period: 60s
+    environment:
+      ADDR: :8080
+      APP_ENV: production
+      APP_BASE_URL: https://${APP_HOSTNAME:?Impostare APP_HOSTNAME}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?Impostare GOOGLE_CLIENT_ID}
+      AUTH_ALLOWED_DOMAINS: ${AUTH_ALLOWED_DOMAINS:?Impostare AUTH_ALLOWED_DOMAINS}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:?Impostare ADMIN_EMAILS}
+      DATABASE_URL_FILE: /run/secrets/database_url
+      GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
+      CSRF_SECRET_FILE: /run/secrets/csrf_secret
+      ENCRYPTION_KEY_FILE: /run/secrets/encryption_key
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google_credentials
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      TYPESAFE_MODEL: ${TYPESAFE_MODEL:-jev-latest}
+      TZ: Europe/Rome
+    secrets:
+      - database_url
+      - google_client_secret
+      - csrf_secret
+      - encryption_key
+      - google_credentials
+    networks:
+      - application
+    labels:
+      - traefik.enable=true
+      - traefik.http.middlewares.${TRAEFIK_STACK:-zupit-automations-production}-redirect-websecure.redirectscheme.scheme=https
+      - traefik.http.middlewares.${TRAEFIK_STACK:-zupit-automations-production}-compress.compress=true
+      - traefik.http.routers.${TRAEFIK_STACK:-zupit-automations-production}.rule=Host(`${APP_HOSTNAME:?Impostare APP_HOSTNAME}`)
+      - traefik.http.routers.${TRAEFIK_STACK:-zupit-automations-production}.entrypoints=web
+      - traefik.http.routers.${TRAEFIK_STACK:-zupit-automations-production}.middlewares=${TRAEFIK_STACK:-zupit-automations-production}-redirect-websecure
+      - traefik.http.routers.${TRAEFIK_STACK:-zupit-automations-production}-secure.rule=Host(`${APP_HOSTNAME:?Impostare APP_HOSTNAME}`)
+      - traefik.http.routers.${TRAEFIK_STACK:-zupit-automations-production}-secure.entrypoints=websecure
+      - traefik.http.routers.${TRAEFIK_STACK:-zupit-automations-production}-secure.tls=true
+      - traefik.http.routers.${TRAEFIK_STACK:-zupit-automations-production}-secure.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-zupit-software-resolver}
+      - traefik.http.routers.${TRAEFIK_STACK:-zupit-automations-production}-secure.middlewares=${TRAEFIK_STACK:-zupit-automations-production}-compress
+      - traefik.http.services.${TRAEFIK_STACK:-zupit-automations-production}.loadbalancer.server.port=8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 45s
+
+volumes:
+  postgres_data:
+
+networks:
+  application:
+
+secrets:
+  postgres_password:
+    environment: POSTGRES_PASSWORD
+  database_url:
+    environment: DATABASE_URL
+  google_client_secret:
+    environment: GOOGLE_CLIENT_SECRET
+  csrf_secret:
+    environment: CSRF_SECRET
+  encryption_key:
+    environment: ENCRYPTION_KEY
+  google_credentials:
+    environment: GOOGLE_CREDENTIALS_JSON

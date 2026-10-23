@@ -6,3 +6,5 @@
 secrets
 *.log
 credentials*.json
+deploy/*.env
+deploy/backups

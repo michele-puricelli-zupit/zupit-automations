@@ -75,7 +75,7 @@ func TestLoadMountedSecret(t *testing.T) {
 		t.Fatalf("mounted secret did not override environment value: %v", err)
 	}
 	t.Setenv("GOOGLE_CLIENT_SECRET_FILE", p+"-missing")
-	if _, err := Load(); err == nil || strings.Contains(err.Error(), p) {
+	if _, err := Load(); err == nil || strings.Contains(err.Error(), p) || !strings.Contains(err.Error(), "GOOGLE_CLIENT_SECRET_FILE") {
 		t.Fatal("unreadable secret must fail without exposing its path")
 	}
 }

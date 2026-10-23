@@ -10,7 +10,7 @@
         {
           "field": "from",
           "operator": "equals",
-          "value": "DA_CONFIGURARE",
+          "value": "support@tndigit.it",
           "ignore_case": true
         },
         {

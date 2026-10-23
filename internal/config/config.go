@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"github.com/zupit-it/zupit-automations/internal/secure"
 	"net/url"
 	"os"
@@ -32,7 +33,7 @@ func Load() (Config, error) {
 		if p := os.Getenv(item.file); p != "" {
 			b, err := os.ReadFile(p)
 			if err != nil {
-				return c, errors.New("impossibile leggere un secret di configurazione")
+				return c, fmt.Errorf("impossibile leggere %s: verificare mount e permessi del secret per UID 10001", item.file)
 			}
 			*item.env = strings.TrimSpace(string(b))
 		}
