@@ -1,0 +1,135 @@
+package views
+
+import "github.com/zupit-it/zupit-automations/internal/model"
+
+templ Runs(d Data) {
+	@Heading("Esecuzioni", "Ultime 100 elaborazioni.")
+	<div id="runs-table" hx-get="/runs" hx-trigger="every 10s" hx-target="this" hx-select="#runs-table" hx-swap="outerHTML">
+		if len(d.Runs) == 0 {
+			<div class="panel empty">
+				<h2>Nessuna esecuzione</h2>
+			</div>
+		} else {
+			<div class="panel table-wrap">
+				<table>
+					<thead>
+						<tr>
+							<th>Email / flusso</th>
+							<th>Ricezione nell’app</th>
+							<th>Stato</th>
+							<th>Durata elaborazione</th>
+							<th></th>
+						</tr>
+					</thead>
+					<tbody>
+						for _, r := range d.Runs {
+							<tr>
+								<td>
+									<strong>{ r.Subject }</strong>
+									<small>{ r.FlowName }</small>
+								</td>
+								<td>
+									{ date(r.CreatedAt) }
+								</td>
+								<td>
+									@Badge(r.Status)
+								</td>
+								<td>
+									{ latency(r) }
+								</td>
+								<td>
+									<a
+										href={ templ.SafeURL(path("/runs/", r.ID)) }
+									>Dettaglio →</a>
+								</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</div>
+}
+
+templ RunDetail(d Data) {
+	@Heading(d.Run.Subject, d.Run.FlowName+" · "+date(d.Run.CreatedAt)) {
+		<a class="button secondary" href="/runs">Tutte le esecuzioni</a>
+	}
+	<div class="run-summary">
+		@Badge(d.Run.Status)
+		<span class="fine">
+			Durata: { latency(d.Run) } · Gmail ID: { d.Run.MessageID }
+		</span>
+	</div>
+	if d.Run.Comparison != nil {
+		@ComparisonDetail(*d.Run.Comparison, d.Run.ID)
+	}
+	for _, s := range d.Run.Steps {
+		@runStep(s, d.User.Admin, d.CSRF)
+	}
+}
+
+templ runStep(s model.Step, admin bool, csrf string) {
+	<section class="panel form-panel">
+		<div class="action-heading">
+			<h2>
+				{ action(s.Action.Kind) }
+			</h2>
+			@Badge(s.Status)
+		</div>
+		<p class="fine">
+			Tentativi: { ID(s.Attempts) }
+		</p>
+		if s.Reference != "" {
+			if safeReference(s.Reference) {
+				<a
+					href={ templ.SafeURL(s.Reference) }
+					rel="noopener noreferrer"
+					target="_blank"
+				>Apri destinazione ↗</a>
+			} else {
+				<p>{ s.Reference }</p>
+			}
+		}
+		if s.Error != "" {
+			<p class="alert error">{ s.Error }</p>
+		}
+		if admin && (s.Status == "failed" || s.Status == "uncertain" || s.Status == "warning") && s.Action.Kind != "ignore" {
+			<form method="post" action={ path("/steps/", s.ID) + "/resolve" }>
+				@CSRF(csrf)
+				@Input("reference", "Riferimento verificato nella destinazione", s.Reference, "text", true)
+				<button class="button secondary" type="submit">Conferma esito già riuscito</button>
+			</form>
+			if s.Reference == "" && s.Status != "warning" {
+				<form method="post" action={ path("/steps/", s.ID) + "/retry" } class="retry-form">
+					@CSRF(csrf)
+					if s.Status == "uncertain" {
+						<label class="check">
+							<input type="checkbox" name="confirmed" value="yes" required/> Ho verificato che l’azione non è stata eseguita nella destinazione
+						</label>
+					}
+					<button class="button secondary" type="submit">Riprova questa azione</button>
+				</form>
+			}
+		}
+	</section>
+}
+
+templ ComparisonDetail(c model.Comparison, runID int) {
+	<section id="comparison-result" class="panel form-panel" hx-get={ path("/runs/", runID) } hx-trigger="every 10s" hx-select="#comparison-result" hx-swap="outerHTML">
+		<div class="action-heading">
+			<h2>Confronto A/B · Jev</h2>@Badge(c.Status)
+		</div>
+		<p class="hint">A esegue le azioni; B propone soltanto. Gli esiti effettivi sono riportati sotto.</p>
+		if c.Error != "" {
+			<p class="alert error">{ c.Error }</p>
+		}
+		if c.Reference != "" {
+			<p class="fine">Report Slack: { c.Reference }</p>
+		}
+		if c.Result.Model != "" {
+			<p class="fine">{ comparisonInfo(c.Result) }</p>
+			<pre>{ pretty(c.Result) }</pre>
+		}
+	</section>
+}

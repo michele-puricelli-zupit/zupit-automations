@@ -1,0 +1,45 @@
+package views
+
+templ Feedback(d Data) {
+	if d.Error != "" {
+		<div class="alert error" role="alert">{ d.Error }</div>
+	}
+	if d.Notice != "" {
+		<div class="alert success" role="status">{ d.Notice }</div>
+	}
+}
+
+templ Badge(value string) {
+	<span class={ "badge " + value }>
+		{ status(value) }
+	</span>
+}
+
+templ Heading(title, description string) {
+	<div class="heading">
+		<div>
+			<h1>{ title }</h1>
+			if description != "" {
+				<p class="muted">{ description }</p>
+			}
+		</div>{ children... }
+	</div>
+}
+
+templ CSRF(token string) {
+	<input type="hidden" name="_csrf" value={ token }/>
+}
+
+templ Input(name, label, value, kind string, required bool) {
+	<label class="field">
+		<span>{ label }</span>
+		<input name={ name } value={ value } type={ kind } required?={ required }/>
+	</label>
+}
+
+templ Textarea(name, label, value string) {
+	<label class="field">
+		<span>{ label }</span>
+		<textarea name={ name } rows="4">{ value }</textarea>
+	</label>
+}

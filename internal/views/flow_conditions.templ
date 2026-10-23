@@ -1,0 +1,72 @@
+package views
+
+import "github.com/zupit-it/zupit-automations/internal/model"
+
+templ filterEditor(filter model.Group, extractors []model.Extractor) {
+	<section class="panel form-panel">
+		<h2>
+			<span class="section-number">2</span> Email da elaborare
+		</h2>
+		<p class="hint">Ogni email è valutata da tutti i flussi attivi. Senza condizioni si elaborano tutte le email della casella.</p>
+		@ConditionGroup("filter", filter, extractors)
+		@EditorButton("filter", "＋ Condizione")
+	</section>
+}
+
+templ FieldSelect(name, label, value string, extractors []model.Extractor) {
+	<label class="field">
+		<span>{ label }</span>
+		<select name={ name }>
+			for _, field := range choices("from", "reply_to", "to", "subject", "body", "id", "received_at") {
+				<option value={ field } selected?={ value == field }>{ choiceLabel(field) }</option>
+			}
+			for _, e := range extractors {
+				<option value={ e.Name } selected?={ value == e.Name }>Dato estratto · { e.Name }</option>
+			}
+			if value != "" && !knownField(value, extractors) {
+				<option value={ value } selected>Campo personalizzato · { value }</option>
+			}
+		</select>
+	</label>
+}
+
+templ ConditionGroup(prefix string, g model.Group, extractors []model.Extractor) {
+	<label class="field">
+		<span>Quali condizioni devono essere vere?</span>
+		<select name={ prefix + ".mode" }>
+			<option value="all" selected?={ g.Mode != "any" }>Tutte le condizioni</option>
+			<option value="any" selected?={ g.Mode == "any" }>Almeno una delle condizioni</option>
+		</select>
+	</label>
+	for i, c := range g.Conditions {
+		<div class="editor-row condition-row">
+			@FieldSelect(key(prefix, i, "field"), "Informazione da controllare", c.Field, extractors)
+			<label class="field">
+				<span>Come confrontarla</span>
+				<select
+					name={ key(prefix, i, "operator") }
+				>
+					for _, op := range choices("equals", "prefix", "contains", "regex") {
+						<option value={ op } selected?={ c.Operator == op }>{ choiceLabel(op) }</option>
+					}
+				</select>
+			</label>
+			@Input(key(prefix, i, "value"), "Testo o valore da cercare", c.Value, "text", false)
+			<label class="check">
+				<input
+					name={ key(prefix, i, "ignore_case") }
+					type="checkbox"
+					checked?={ c.IgnoreCase }
+				/> Ignora maiuscole
+			</label>
+			<label class="check">
+				<input
+					name={ key(prefix, i, "not") }
+					type="checkbox"
+					checked?={ c.Not }
+				/> Escludi
+			</label>
+			@EditorButton(key("remove", "condition", prefix, i), "Rimuovi")
+		</div>
+	}
+}

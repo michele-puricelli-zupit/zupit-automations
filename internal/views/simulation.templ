@@ -1,0 +1,27 @@
+package views
+
+templ Simulation(d Data) {
+	@Heading("Simula · "+d.Flow.Name, "Non invia email né crea ticket o elementi nelle liste.") {
+		<a
+			href={ templ.SafeURL(path("/flows/", d.Flow.ID)) }
+			class="button secondary"
+		>Modifica flusso</a>
+	}
+	if d.Flow.Definition.Comparison != nil {
+		<p class="hint">La simulazione verifica solo le regole standard (A).</p>
+	}
+	<form class="panel form-panel" method="post" action={ path("/flows/", d.Flow.ID) + "/simulate" }>
+		@CSRF(d.CSRF)
+		<label class="field">
+			<span>Email completa in formato RFC822</span>
+			<textarea class="code" name="raw" rows="14" required placeholder="From: mittente@example.test&#10;To: team@example.test&#10;Subject: Segnalazione&#10;&#10;Testo del messaggio">{ d.Raw }</textarea>
+		</label>
+		<button type="submit" class="button primary">Simula elaborazione</button>
+	</form>
+	if d.Simulation != "" {
+		<section class="panel form-panel">
+			<h2>Risultato: { d.Branch }</h2>
+			<pre>{ d.Simulation }</pre>
+		</section>
+	}
+}

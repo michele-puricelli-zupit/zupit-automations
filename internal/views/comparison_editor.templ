@@ -1,0 +1,28 @@
+package views
+
+templ ComparisonEditor(d Data) {
+	<details class="panel form-panel" open?={ d.Flow.Definition.Comparison != nil }>
+		<summary>Confronto con Jev · facoltativo</summary>
+		<label class="check"><input type="checkbox" name="comparison" checked?={ d.Flow.Definition.Comparison != nil }/> Abilita il confronto e invia il report al mio DM Slack</label>
+		<p class="hint">Solo A esegue le azioni. Email e regole vengono inviate a TypeSafe; Jev propone un ramo (B), anche per le email escluse da A.</p>
+		if !d.JevReady {
+			<p class="hint">Per attivare Jev serve la chiave API TypeSafe sul server.</p>
+		}
+		@Textarea("comparison.instructions", "Regole per Jev", comparisonConfig(d.Flow.Definition).Instructions)
+		<div class="form-grid">
+			<label class="field">
+				<span>Connessione Slack per il confronto</span>
+				<select name="comparison.slack_connection_id">
+					<option value="">Scegli Slack per il confronto</option>
+					for _, c := range d.Connections {
+						if c.Provider == "slack" {
+							<option value={ ID(c.ID) } selected?={ c.ID == comparisonConfig(d.Flow.Definition).SlackConnectionID }>{ c.Name }</option>
+						}
+					}
+				</select>
+			</label>
+			@Input("comparison.slack_recipient", "ID membro Slack o DM personale", comparisonConfig(d.Flow.Definition).SlackRecipient, "text", false)
+		</div>
+		<details class="field-help"><summary>Dove trovare l’ID Slack</summary><p class="hint">Profilo Slack → ⋯ → Copia ID membro (U…/W…). È accettato anche il DM personale del bot (D…). Il bot richiede chat:write e im:write.</p></details>
+	</details>
+}

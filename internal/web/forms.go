@@ -54,6 +54,14 @@ func parseFlow(v url.Values) model.Flow {
 				}
 				a.QueueID = queueID
 			}
+			if v.Has(ap+"previous_connection_id") && v.Get(ap+"previous_connection_id") != v.Get(ap+"connection_id") {
+				a.Project, a.ServiceDeskID, a.Reporter = "", "", ""
+				a.BoardID, a.QueueID, a.IssueType, a.RequestTypeID = 0, 0, "", ""
+			} else if a.Kind == "jira" && v.Has(ap+"previous_project") && v.Get(ap+"previous_project") != a.Project {
+				a.BoardID, a.IssueType = 0, ""
+			} else if a.Kind == "jira_request" && v.Has(ap+"previous_service_desk_id") && v.Get(ap+"previous_service_desk_id") != a.ServiceDeskID {
+				a.QueueID, a.RequestTypeID = 0, ""
+			}
 			for fi := 0; fi < 100; fi++ {
 				fp := ap + "field." + strconv.Itoa(fi) + "."
 				if !v.Has(fp + "field") {

@@ -1,0 +1,53 @@
+package views
+
+import (
+	"github.com/zupit-it/zupit-automations/internal/model"
+	"github.com/zupit-it/zupit-automations/internal/connectors"
+)
+
+templ JiraDestination(bi, ai int, a model.Action, options connectors.JiraChoices) {
+	<input type="hidden" name={ key("branch", bi, "action", ai, "previous_connection_id") } value={ intValue(a.ConnectionID) }/>
+	<input type="hidden" name={ key("branch", bi, "action", ai, "previous_project") } value={ a.Project }/>
+	<input type="hidden" name={ key("branch", bi, "action", ai, "previous_service_desk_id") } value={ a.ServiceDeskID }/>
+	if options.Error != "" {
+		<p class="alert error" role="alert">{ options.Error }</p>
+	}
+	<div class="form-grid">
+		if a.Kind == "jira" {
+			@JiraSelect(key("branch", bi, "action", ai, "project"), "Progetto Jira · nome e key", a.Project, "Scegli il progetto", options.Projects, true)
+			@JiraSelect(key("branch", bi, "action", ai, "board_id"), "Board attesa", intValue(a.BoardID), "Scegli prima il progetto, poi la board", options.Boards, false)
+			@JiraSelect(key("branch", bi, "action", ai, "issue_type"), "Tipo di ticket", a.IssueType, "Scegli il tipo di ticket", options.IssueTypes, false)
+		} else {
+			@JiraSelect(key("branch", bi, "action", ai, "service_desk_id"), "Service Desk · nome e key", a.ServiceDeskID, "Scegli il Service Desk", options.ServiceDesks, true)
+			@JiraSelect(key("branch", bi, "action", ai, "request_type_id"), "Tipo di richiesta", a.RequestTypeID, "Scegli il tipo di richiesta", options.RequestTypes, false)
+			@JiraSelect(key("branch", bi, "action", ai, "queue_id"), "Coda attesa · facoltativa", intValue(a.QueueID), "Nessun controllo della coda", options.Queues, false)
+		}
+	</div>
+	if options.QueueError != "" {
+		<p class="hint" role="status">{ options.QueueError }</p>
+	}
+	<p class="hint">Le voci disponibili dipendono dai permessi della connessione Jira. Se cambi progetto o Service Desk, scegli di nuovo il tipo e la destinazione.</p>
+	@EditorButton("", "Aggiorna scelte Jira")
+}
+
+templ JiraSelect(name, label, value, placeholder string, options []connectors.JiraOption, reload bool) {
+	<label class="field">
+		<span>{ label }</span>
+		<select name={ name }
+			if reload {
+				hx-post="/flows/editor" hx-trigger="change" hx-include="closest form" hx-target="#flow-editor" hx-swap="outerHTML"
+			}
+		>
+			<option value="" selected?={ value == "" }>{ placeholder }</option>
+			if value != "" && !hasJiraOption(options, value) {
+				<option value={ value } selected>Selezione salvata · non disponibile, aggiorna le scelte</option>
+			}
+			for _, option := range options {
+				<option value={ option.Value } selected?={ option.Value == value }>{ option.Label }</option>
+			}
+		</select>
+		if len(options) == 0 && value == "" {
+			<small class="hint">Nessuna voce caricata. Scegli la connessione e il progetto / Service Desk, poi aggiorna le scelte.</small>
+		}
+	</label>
+}

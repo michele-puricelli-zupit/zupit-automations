@@ -1,0 +1,105 @@
+package views
+
+templ Flows(d Data) {
+	@Heading("Flussi", "") {
+		if d.User.Admin {
+			<form class="preset-picker" method="get" action="/flows/new">
+				<label class="field">
+					<span>Modello del nuovo flusso</span>
+					<select name="template">
+						<option value="">Flusso vuoto</option>
+						<option value="srt">SRT / Remedy</option>
+						<option value="cup">CUP</option>
+						<option value="kit">key2help</option>
+						<option value="support">Support KR</option>
+					</select>
+				</label>
+				<button class="button primary" type="submit">Crea flusso</button>
+			</form>
+		}
+	}
+	<div class="stats">
+		<div>
+			<span>FLUSSI</span>
+			<strong>
+				{ ID(len(d.Flows)) }
+			</strong>
+		</div>
+		<div>
+			<span>ATTIVI</span>
+			<strong>
+				{ ID(enabledCount(d.Flows)) }
+			</strong>
+		</div>
+		<div>
+			<span>CONNESSIONI PRONTE</span>
+			<strong>
+				{ ID(readyCount(d.Connections)) }
+			</strong>
+		</div>
+	</div>
+	if len(d.Flows) == 0 {
+		<div class="empty panel">
+			<span class="empty-icon" aria-hidden="true">⇄</span>
+			<h2>Nessun flusso</h2>
+			<a class="button secondary" href="/connections">Vai alle connessioni</a>
+		</div>
+	} else {
+		<div class="panel table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>Flusso</th>
+						<th>Sorgente</th>
+						<th>Stato</th>
+						<th>Azioni</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, f := range d.Flows {
+						<tr>
+							<td>
+								<strong>{ f.Name }</strong>
+								if f.Definition.Comparison != nil {
+									<small>Confronto Jev</small>
+								}
+							</td>
+							<td>
+								{ sourceName(f.SourceID, d.Connections) }
+							</td>
+							<td>
+								if f.Enabled {
+									<span class="badge ready">Attivo</span>
+								} else {
+									<span class="badge">Disattivato</span>
+								}
+							</td>
+							<td>
+								<div class="row-actions">
+									if d.User.Admin {
+										<a
+											href={ templ.SafeURL(path("/flows/", f.ID)) }
+										>Modifica</a>
+										<a
+											href={ templ.SafeURL(path("/flows/", f.ID) + "/simulate") }
+										>Simula</a>
+										<form method="post" action={ path("/flows/", f.ID) + "/toggle" }>
+											@CSRF(d.CSRF)
+											<button class="link" type="submit">
+												if f.Enabled {
+													<span>Disattiva</span>
+												} else {
+													<span>Attiva</span>
+												}
+											</button>
+										</form>
+									}
+								</div>
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}

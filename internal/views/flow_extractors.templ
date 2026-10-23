@@ -1,0 +1,28 @@
+package views
+
+import "github.com/zupit-it/zupit-automations/internal/model"
+
+templ extractorsEditor(extractors []model.Extractor) {
+	<section class="panel form-panel">
+		<h2>
+			<span class="section-number">3</span> Dati da estrarre
+		</h2>
+		<details class="field-help"><summary>Come estrarre un dato</summary><p class="hint">Un modello vuoto copia tutto il campo. Con un’espressione regolare (Go/RE2), la prima cattura diventa la variabile; i gruppi nominati sono disponibili con il proprio nome.</p></details>
+		for i, e := range extractors {
+			<div class="editor-row extract-row">
+				@Input(key("extract", i, "name"), "Variabile", e.Name, "text", false)
+				@FieldSelect(key("extract", i, "source"), "Da dove prendere il dato", e.Source, nil)
+				@Input(key("extract", i, "pattern"), "Espressione regolare", e.Pattern, "text", false)
+				<label class="check">
+					<input
+						type="checkbox"
+						name={ key("extract", i, "required") }
+						checked?={ e.Required }
+					/> Obbligatorio
+				</label>
+				@EditorButton(key("remove", "extract", i), "Rimuovi")
+			</div>
+		}
+		@EditorButton("extract", "＋ Estrazione")
+	</section>
+}

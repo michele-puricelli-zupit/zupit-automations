@@ -33,7 +33,7 @@ jobs:
           cache: true
       - run: make verify
       - name: Check generated files
-        run: git diff --exit-code -- ent internal/views/app_templ.go
+        run: git diff --exit-code -- ent internal/views
       - name: Check Compose configuration
         env:
           APP_BASE_URL: https://automations.example.test

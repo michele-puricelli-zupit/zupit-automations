@@ -1,0 +1,67 @@
+package views
+
+import "github.com/zupit-it/zupit-automations/internal/model"
+
+templ FlowEditor(d Data) {
+	<form
+		id="flow-editor"
+		method="post"
+		action={ path("/flows/", d.Flow.ID) }
+	>
+		@CSRF(d.CSRF)
+		<input
+			type="hidden"
+			name="id"
+			value={ ID(d.Flow.ID) }
+		/>
+		@Heading("Editor del flusso", "") {
+			<button class="button primary" type="submit">Salva flusso</button>
+		}
+		@Feedback(d)
+		@sourceEditor(d.Flow, d.Connections)
+		@ComparisonEditor(d)
+		@filterEditor(d.Flow.Definition.Filter, d.Flow.Definition.Extractors)
+		@extractorsEditor(d.Flow.Definition.Extractors)
+		@branchesEditor(d)
+		<details class="panel form-panel">
+			<summary>Usare i dati dell’email nelle azioni</summary>
+			<p>Usa <code>{ "{{ .subject }}" }</code> per l’oggetto, <code>{ "{{ .from }}" }</code> per il mittente e <code>{ "{{ .body }}" }</code> per il testo, oppure una variabile estratta. Funzioni disponibili: trim, lower, upper, replace, urlquery.</p>
+		</details>
+		<div class="editor-save">
+			<a href="/flows">Annulla</a>
+			<button class="button primary" type="submit">Salva flusso</button>
+		</div>
+	</form>
+}
+
+templ EditorButton(operation, label string) {
+	<button class="button small secondary" type="submit" name="operation" value={ operation } formaction="/flows/editor" formnovalidate hx-post="/flows/editor" hx-target="#flow-editor" hx-swap="outerHTML" hx-disabled-elt="this">{ label }</button>
+}
+
+templ sourceEditor(flow model.Flow, connections []model.Connection) {
+	<section class="panel form-panel">
+		<h2>
+			<span class="section-number">1</span> Sorgente
+		</h2>
+		<div class="form-grid">
+			@Input("name", "Nome del flusso", flow.Name, "text", true)
+			<label class="field">
+				<span>Connessione Gmail</span>
+				<select name="source_id" required>
+					<option value="">Scegli la casella da cui leggere le email</option>
+					for _, c := range connections {
+						if c.Provider == "gmail" {
+							<option
+								value={ ID(c.ID) }
+								selected?={ c.ID == flow.SourceID }
+							>{ c.Name }</option>
+						}
+					}
+				</select>
+			</label>
+		</div>
+		<label class="check">
+			<input name="enabled" type="checkbox" checked?={ flow.Enabled }/> Attiva al salvataggio: eseguirà azioni reali
+		</label>
+	</section>
+}

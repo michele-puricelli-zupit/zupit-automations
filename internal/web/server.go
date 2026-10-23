@@ -265,6 +265,7 @@ func (s *Server) flowForm(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	s.jiraChoices(r, &d)
 	s.render(w, r, views.Page(d))
 }
 func (s *Server) editor(w http.ResponseWriter, r *http.Request) {
@@ -282,6 +283,7 @@ func (s *Server) editor(w http.ResponseWriter, r *http.Request) {
 	if err = editorOperation(&d.Flow, r.Form.Get("operation")); err != nil {
 		d.Error = err.Error()
 	}
+	s.jiraChoices(r, &d)
 	if r.Header.Get("HX-Request") == "true" {
 		s.render(w, r, views.FlowEditor(d))
 	} else {
@@ -335,6 +337,7 @@ func (s *Server) saveFlow(w http.ResponseWriter, r *http.Request) {
 		}
 		d.Flow = f
 		d.Error = err.Error()
+		s.jiraChoices(r, &d)
 		s.render(w, r, views.Page(d))
 		return
 	}

@@ -1,0 +1,117 @@
+package views
+
+templ Connections(d Data) {
+	@Heading("Connessioni", "")
+	if d.User.Admin {
+		<div class="connect-options">
+			<a href="/connections/new?provider=gmail">
+				<span class="provider gmail">G</span>
+				<strong>Collega Gmail</strong>
+			</a>
+			<a href="/connections/new?provider=jira">
+				<span class="provider jira">J</span>
+				<strong>Collega Jira</strong>
+			</a>
+			<a href="/connections/new?provider=slack">
+				<span class="provider slack">S</span>
+				<strong>Collega Slack</strong>
+			</a>
+		</div>
+	}
+	if len(d.Connections) == 0 {
+		<div class="panel empty">
+			<h2>Nessuna connessione configurata</h2>
+		</div>
+	} else {
+		<div class="panel table-wrap">
+			<table>
+				<thead>
+					<tr>
+						<th>Connessione</th>
+						<th>Servizio</th>
+						<th>Stato</th>
+						<th>Gestione</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, c := range d.Connections {
+						<tr>
+							<td>
+								<strong>{ c.Name }</strong>
+								if c.Error != "" {
+									<small class="danger">{ c.Error }</small>
+								}
+							</td>
+							<td>
+								{ provider(c.Provider) }
+							</td>
+							<td>
+								@Badge(c.Status)
+							</td>
+							<td>
+								if d.User.Admin {
+									<div class="row-actions">
+										<a
+											href={ templ.SafeURL(path("/connections/", c.ID)) }
+										>Configura</a>
+										if c.Provider == "gmail" {
+											<form method="post" action={ path("/connections/", c.ID) + "/authorize" }>
+												@CSRF(d.CSRF)
+												<button type="submit" class="link">Autorizza Google</button>
+											</form>
+										}
+										<form method="post" action={ path("/connections/", c.ID) + "/verify" }>
+											@CSRF(d.CSRF)
+											<button type="submit" class="link">Verifica</button>
+										</form>
+									</div>
+								}
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+templ ConnectionForm(d Data) {
+	@Heading("Connessione "+provider(d.Connection.Provider), "") {
+		<a class="button secondary" href="/connections">Torna alle connessioni</a>
+	}
+	<form
+		class="panel form-panel"
+		method="post"
+		action={ path("/connections/", d.Connection.ID) }
+	>
+		@CSRF(d.CSRF)
+		<input type="hidden" name="provider" value={ d.Connection.Provider }/>
+		@Input("name", "Nome della connessione", d.Connection.Name, "text", true)
+		if d.Connection.Provider == "gmail" {
+			@Input("email", "Indirizzo della casella Workspace", d.Connection.Config["email"], "email", true)
+			@Input("topic", "Topic Pub/Sub · projects/PROGETTO/topics/NOME", d.Connection.Config["topic"], "text", true)
+			@Input("subscription", "Subscription · projects/PROGETTO/subscriptions/NOME", d.Connection.Config["subscription"], "text", true)
+			<p class="hint">Salva, poi premi «Autorizza Google» usando la casella indicata.</p>
+		} else if d.Connection.Provider=="jira" {
+			@Input("url", "URL Jira Cloud", d.Connection.Config["url"], "url", true)
+			@Input("email", "Email dell’account tecnico", d.Connection.Config["email"], "email", true)
+			<label class="field">
+				<span>Nuovo API token</span>
+				<input type="password" name="token" autocomplete="new-password"/>
+				<small>Lascia vuoto per mantenere il token esistente.</small>
+			</label>
+		} else {
+			<label class="field">
+				<span>Nuovo bot token Slack</span>
+				<input type="password" name="token" autocomplete="new-password"/>
+				<small>Lascia vuoto per mantenere il token esistente.</small>
+			</label>
+			@Input("alert_channel", "ID canale per gli avvisi operativi · facoltativo", d.Connection.Config["alert_channel"], "text", false)
+			<p class="hint">Il bot deve accedere alle liste e al canale avvisi. Configura il canale su una sola connessione.</p>
+		}
+		<div class="form-footer">
+			<button class="button primary" type="submit">Salva connessione</button>
+			<a href="/connections">Annulla</a>
+		</div>
+	</form>
+}

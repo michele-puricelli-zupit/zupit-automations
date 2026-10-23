@@ -1,0 +1,98 @@
+package views
+
+import "github.com/zupit-it/zupit-automations/internal/model"
+
+templ ActionEditor(d Data, bi, ai int, a model.Action) {
+	<div class="action-editor">
+		<div class="action-heading">
+			<h3>
+				Azione { ID(ai + 1) }
+			</h3>
+			@EditorButton(key("remove", "action", bi, ai), "Rimuovi azione")
+		</div>
+		<div class="form-grid">
+			<label class="field">
+				<span>Cosa deve fare l’automazione?</span>
+				<select
+					name={ key("branch", bi, "action", ai, "kind") }
+					hx-post="/flows/editor"
+					hx-trigger="change"
+					hx-include="closest form"
+					hx-target="#flow-editor"
+					hx-swap="outerHTML"
+				>
+					for _, kind := range choices("jira", "jira_request", "slack", "forward", "ignore") {
+						<option value={ kind } selected?={ a.Kind == kind }>
+							{ action(kind) }
+						</option>
+					}
+				</select>
+			</label>
+			if a.Kind != "ignore" {
+				<label class="field">
+					<span>Connessione destinazione</span>
+					<select
+						name={ key("branch", bi, "action", ai, "connection_id") }
+						hx-post="/flows/editor" hx-trigger="change" hx-include="closest form" hx-target="#flow-editor" hx-swap="outerHTML"
+					>
+						<option value="">Scegli la connessione { provider(providerFor(a.Kind)) } da usare</option>
+						for _, c := range d.Connections {
+							if c.Provider == providerFor(a.Kind) {
+								<option
+									value={ ID(c.ID) }
+									selected?={ c.ID == a.ConnectionID }
+								>{ c.Name }</option>
+							}
+						}
+					</select>
+				</label>
+			}
+		</div>
+		if a.Kind == "jira" || a.Kind == "jira_request" {
+			@JiraDestination(bi, ai, a, d.Jira[key(bi, ai)])
+			<details>
+				<summary>Richiedente diverso dall’account Jira · avanzato</summary>
+				@Input(key("branch", bi, "action", ai, "reporter"), "Account ID richiedente · facoltativo", a.Reporter, "text", false)
+			</details>
+			if a.Kind == "jira" {
+				<p class="hint">La board dipende dai campi del ticket; sprint e notifiche dalle automazioni Jira.</p>
+			} else {
+				<p class="hint">La coda è facoltativa e dipende dai campi della richiesta. Per verificarla serve l’accesso Jira come agente.</p>
+			}
+		}
+		if a.Kind == "slack" {
+			@Input(key("branch", bi, "action", ai, "list_id"), "ID Slack List", a.ListID, "text", false)
+		}
+		if a.Kind == "forward" {
+			@Input(key("branch", bi, "action", ai, "to"), "Destinatario dell’inoltro", a.To, "text", false)
+		}
+		if a.Kind == "jira" || a.Kind == "jira_request" || a.Kind == "forward" {
+			@Input(key("branch", bi, "action", ai, "subject"), "Riepilogo / oggetto", a.Subject, "text", false)
+			@Textarea(key("branch", bi, "action", ai, "body"), "Descrizione / corpo dell’inoltro", a.Body)
+		}
+		if a.Kind == "ignore" {
+			@Input(key("branch", bi, "action", ai, "reason"), "Motivo dell’esclusione", a.Reason, "text", false)
+		}
+		if a.Kind == "jira" || a.Kind == "jira_request" || a.Kind == "slack" {
+			<h4>Campi di destinazione</h4>
+			for fi, f := range a.Fields {
+				<div class="editor-row mapping-row">
+					@Input(key("branch", bi, "action", ai, "field", fi, "field"), "ID campo / colonna", f.Field, "text", false)
+					<label class="field">
+						<span>Che tipo di dato inviare?</span>
+						<select
+							name={ key("branch", bi, "action", ai, "field", fi, "type") }
+						>
+							for _, typ := range choices("text", "number", "boolean", "option", "user", "date", "link", "json") {
+								<option value={ typ } selected?={ f.Type == typ }>{ choiceLabel(typ) }</option>
+							}
+						</select>
+					</label>
+					@Input(key("branch", bi, "action", ai, "field", fi, "value"), "Valore o template", f.Value, "text", false)
+					@EditorButton(key("remove", "field", bi, ai, fi), "Rimuovi")
+				</div>
+			}
+			@EditorButton(key("field", bi, ai), "＋ Campo")
+		}
+	</div>
+}

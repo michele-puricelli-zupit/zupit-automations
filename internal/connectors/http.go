@@ -23,6 +23,7 @@ import (
 type Failure struct {
 	Message                    string
 	HTTPStatus                 int
+	SlackMethod, SlackCode     string
 	cause                      error
 	Retryable, Auth, Uncertain bool
 	After                      time.Duration
@@ -30,8 +31,12 @@ type Failure struct {
 
 func (e *Failure) Error() string { return e.Message }
 func (e *Failure) LogValue() slog.Value {
-	return slog.GroupValue(slog.String("reason", e.Message), slog.Int("http_status", e.HTTPStatus),
-		slog.Bool("auth", e.Auth), slog.Bool("retryable", e.Retryable), slog.Bool("uncertain", e.Uncertain), logging.Error(e.cause))
+	attrs := []slog.Attr{slog.String("reason", e.Message), slog.Int("http_status", e.HTTPStatus),
+		slog.Bool("auth", e.Auth), slog.Bool("retryable", e.Retryable), slog.Bool("uncertain", e.Uncertain), logging.Error(e.cause)}
+	if e.SlackMethod != "" {
+		attrs = append(attrs, slog.String("slack_method", e.SlackMethod), slog.String("slack_code", e.SlackCode))
+	}
+	return slog.GroupValue(attrs...)
 }
 func Classify(err error) *Failure {
 	var f *Failure

@@ -1,4 +1,7 @@
 .PHONY: generate fmt test vet build verify run migrate integration
+-include .env.local
+export APP_ENV APP_BASE_URL DATABASE_URL DEV_DATABASE_URL TEST_DATABASE_URL AUTH_ALLOWED_DOMAINS GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET CSRF_SECRET SLACK_BOT_TOKEN SLACK_RECIPIENT_ALLOWLIST POSTHOG_PROJECT_TOKEN POSTHOG_HOST UPLOAD_TEMP_DIR UPLOAD_DIR GCS_BUCKET GOOGLE_APPLICATION_CREDENTIALS PORT
+
 generate:
 	go generate ./ent
 	go tool templ generate
@@ -18,7 +21,7 @@ verify: generate
 	go vet ./...
 	$(MAKE) build
 run:
-	@set -a; if [ -f .env ]; then . ./.env || exit $$?; fi; exec go run ./cmd/server
+	go run ./cmd/server
 migrate:
 	@set -a; if [ -f .env ]; then . ./.env || exit $$?; fi; exec go run ./cmd/migrate
 integration:

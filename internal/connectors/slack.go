@@ -26,26 +26,44 @@ func (c *Clients) slack(ctx context.Context, id int, method string, body, out an
 		return &Failure{Message: "Risposta Slack non valida", Uncertain: true}
 	}
 	if !response.OK {
-		f := &Failure{Message: "Richiesta Slack rifiutata"}
-		switch response.Error {
-		case "invalid_auth", "not_authed", "token_revoked", "account_inactive":
-			f.Auth = true
-			f.Message = "Token Slack revocato o non valido"
-		case "ratelimited", "rate_limited":
-			f.Retryable = true
-			f.Message = "Limite richieste Slack raggiunto"
-		case "internal_error", "fatal_error", "request_timeout":
-			f.Uncertain = true
-			f.Message = "Slack non ha confermato l’esito della richiesta"
-		case "missing_scope", "access_denied", "no_permission":
-			f.Message = "Permessi Slack insufficienti"
-		case "invalid_list_id", "file_not_found", "invalid_column_id", "invalid_initial_fields":
-			f.Message = "Lista o colonne Slack non valide"
-		}
-		return f
+		return slackFailure(method, response.Error)
 	}
 	return json.Unmarshal(raw, out)
 }
+
+func slackFailure(method, code string) *Failure {
+	f := &Failure{Message: "Richiesta Slack rifiutata", HTTPStatus: 200, SlackMethod: method, SlackCode: code}
+	switch code {
+	case "invalid_auth", "not_authed", "token_revoked", "account_inactive":
+		f.Auth = true
+		f.Message = "Token Slack revocato o non valido"
+	case "ratelimited", "rate_limited":
+		f.Retryable = true
+		f.Message = "Limite richieste Slack raggiunto"
+	case "internal_error", "fatal_error", "request_timeout":
+		f.Uncertain = true
+		f.Message = "Slack non ha confermato l’esito della richiesta"
+	case "missing_scope", "access_denied", "no_permission":
+		f.Message = "Permessi Slack insufficienti"
+	case "invalid_list_id", "file_not_found", "invalid_column_id", "invalid_initial_fields":
+		f.Message = "Lista o colonne Slack non valide"
+	case "messages_tab_disabled":
+		f.Message = "Abilitare la scheda Messaggi nell’App Home della Slack App"
+	case "channel_not_found", "user_not_found", "users_not_found":
+		f.Message = "Destinatario Slack non trovato: verificare ID e workspace della connessione"
+	case "cannot_dm_bot", "cannot_dm_self", "user_disabled":
+		f.Message = "Slack non consente un DM a questo destinatario"
+	case "not_in_channel", "is_archived", "restricted_action", "app_access_restricted":
+		f.Message = "Accesso alla conversazione Slack non consentito"
+	case "invalid_arguments", "invalid_blocks", "invalid_blocks_format", "msg_blocks_too_long", "no_text", "not_allowed_token_type":
+	default:
+		// Log only known API codes; unexpected response text may contain private data.
+		f.SlackCode = "unrecognized_error"
+	}
+	f.Message += fmt.Sprintf(" (%s: %s)", f.SlackMethod, f.SlackCode)
+	return f
+}
+
 func slackFields(fields []model.Mapping) ([]any, error) {
 	initial := make([]any, 0, len(fields))
 	for _, f := range fields {

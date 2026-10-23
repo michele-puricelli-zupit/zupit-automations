@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -262,6 +263,29 @@ func (w *Worker) sourceError(ctx context.Context, conn model.Connection, operati
 		log.Error("Salvataggio avviso sorgente fallito", "event", "notification.enqueue_failed", logging.Error(e))
 	}
 }
+
+type gmailNotification struct {
+	Email     string      `json:"emailAddress"`
+	HistoryID json.Number `json:"historyId"`
+}
+
+func parseGmailNotification(data []byte) (gmailNotification, error) {
+	var event gmailNotification
+	if err := json.Unmarshal(data, &event); err != nil {
+		return event, errors.New("JSON Gmail non valido o campi di tipo errato")
+	}
+	if strings.TrimSpace(event.Email) == "" {
+		return event, errors.New("emailAddress assente")
+	}
+	if event.HistoryID == "" {
+		return event, errors.New("historyId assente")
+	}
+	if id, err := strconv.ParseUint(event.HistoryID.String(), 10, 64); err != nil || id == 0 {
+		return event, errors.New("historyId deve essere un intero positivo")
+	}
+	return event, nil
+}
+
 func (w *Worker) receive(ctx context.Context, conn model.Connection) {
 	log := w.Log.With("connection_id", conn.ID, "subscription", conn.Config["subscription"])
 	parts := strings.Split(conn.Config["subscription"], "/")
@@ -278,12 +302,9 @@ func (w *Worker) receive(ctx context.Context, conn model.Connection) {
 			subscriber.ReceiveSettings.NumGoroutines = 1
 			subscriber.ReceiveSettings.MaxOutstandingMessages = 1
 			err = subscriber.Receive(ctx, func(deliveryCtx context.Context, message *pubsub.Message) {
-				var event struct {
-					Email     string `json:"emailAddress"`
-					HistoryID string `json:"historyId"`
-				}
-				if json.Unmarshal(message.Data, &event) != nil || event.HistoryID == "" {
-					log.Warn("Notifica Pub/Sub ignorata: formato Gmail non valido", "event", "pubsub.message_ignored", "pubsub_message_id", message.ID)
+				event, err := parseGmailNotification(message.Data)
+				if err != nil {
+					log.Warn("Notifica Pub/Sub ignorata: formato Gmail non valido", "event", "pubsub.message_ignored", "pubsub_message_id", message.ID, "reason", err.Error())
 					message.Ack()
 					return
 				}

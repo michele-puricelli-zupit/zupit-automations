@@ -1,0 +1,31 @@
+package views
+
+import "github.com/zupit-it/zupit-automations/internal/model"
+
+templ branchesEditor(d Data) {
+	<section class="panel form-panel">
+		<h2>
+			<span class="section-number">4</span> Rami e azioni
+		</h2>
+		<p class="hint">Si esegue solo il primo ramo che corrisponde. Un ramo senza condizioni accetta tutte le email.</p>
+		for bi, b := range d.Flow.Definition.Branches {
+			@branchEditor(d, bi, b)
+		}
+		@EditorButton("branch", "＋ Ramo")
+	</section>
+}
+
+templ branchEditor(d Data, bi int, b model.Branch) {
+	<div class="branch">
+		<div class="branch-header">
+			@Input(key("branch", bi, "name"), "Nome del ramo", b.Name, "text", false)
+			@EditorButton(key("remove", "branch", bi), "Rimuovi ramo")
+		</div>
+		@ConditionGroup(key("branch", bi, "when"), b.When, d.Flow.Definition.Extractors)
+		@EditorButton(key("condition", bi), "＋ Condizione del ramo")
+		for ai, a := range b.Actions {
+			@ActionEditor(d, bi, ai, a)
+		}
+		@EditorButton(key("action", bi), "＋ Azione")
+	</div>
+}

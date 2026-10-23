@@ -1,0 +1,121 @@
+package views
+
+templ Page(d Data) {
+	<!DOCTYPE html>
+	<html lang="it">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<meta name="htmx-config" content={ `{"includeIndicatorStyles":false,"allowEval":false}` }/>
+			<title>{ d.Title } · Smeesto</title>
+			<link rel="stylesheet" href="/static/app.css"/>
+			<script src="/static/htmx.min.js" defer>
+</script>
+		</head>
+		<body>
+			<a href="#main" class="skip">Vai al contenuto</a>
+			if d.User.ID == 0 {
+				@login()
+			} else {
+				<div class="shell">
+					@sidebar(d)
+					<main id="main" class="workspace">
+						<div class="content">
+							@pageContent(d)
+						</div>
+					</main>
+				</div>
+			}
+		</body>
+	</html>
+}
+
+templ login() {
+	<main id="main" class="login-wrap">
+		<div class="login-card">
+			<span class="brand-mark">S</span>
+			<h1>Smeesto</h1>
+			<p class="muted">Accedi con il tuo account Google aziendale.</p>
+			<a class="button primary login-button" href="/auth/login">
+				Accedi con Google <span aria-hidden="true">↗</span>
+			</a>
+		</div>
+	</main>
+}
+
+templ sidebar(d Data) {
+	<aside class="sidebar">
+		<a class="brand" href="/flows">
+			<span class="brand-mark">S</span>
+			<span>
+				Smeesto
+			</span>
+		</a>
+		<nav aria-label="Navigazione principale">
+			<a
+				class={ navClass(d.Active, "flows") }
+				href="/flows"
+			>
+				<span aria-hidden="true">⇄</span> Flussi
+			</a>
+			<a
+				class={ navClass(d.Active, "connections") }
+				href="/connections"
+			>
+				<span aria-hidden="true">⌁</span> Connessioni
+			</a>
+			<a
+				class={ navClass(d.Active, "runs") }
+				href="/runs"
+			>
+				<span aria-hidden="true">≡</span> Esecuzioni
+			</a>
+		</nav>
+		<div class="profile">
+			<span class="avatar">
+				{ initial(d.User.Name) }
+			</span>
+			<div>
+				<strong>{ d.User.Name }</strong>
+				<small>{ d.User.Email }</small>
+				<small>
+					if d.User.Admin {
+						<span>Amministratore</span>
+					} else {
+						<span>Sola lettura</span>
+					}
+				</small>
+			</div>
+		</div>
+		<form method="post" action="/auth/logout">
+			<input type="hidden" name="_csrf" value={ d.CSRF }/>
+			<button class="logout" type="submit">Esci dall’account</button>
+		</form>
+	</aside>
+}
+
+templ pageContent(d Data) {
+	if d.Active != "editor" {
+		@Feedback(d)
+	}
+	switch d.Active {
+		case "connections":
+			if d.Connection.Provider != "" {
+				@ConnectionForm(d)
+			} else {
+				@Connections(d)
+			}
+		case "editor":
+			@FlowEditor(d)
+		case "simulate":
+			@Simulation(d)
+		case "runs":
+			if d.Run.ID != 0 {
+				@RunDetail(d)
+			} else {
+				@Runs(d)
+			}
+		default:
+			@Flows(d)
+	}
+}

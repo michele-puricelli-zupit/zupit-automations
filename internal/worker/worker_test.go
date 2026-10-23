@@ -6,6 +6,36 @@ import (
 	"time"
 )
 
+func TestParseGmailNotification(t *testing.T) {
+	for _, tt := range []struct {
+		name, payload, history string
+		valid                  bool
+	}{
+		{"string history", `{"emailAddress":"team@example.test","historyId":"9876543210"}`, "9876543210", true},
+		{"numeric history", `{"emailAddress":"team@example.test","historyId":9876543210}`, "9876543210", true},
+		{"large history", `{"emailAddress":"team@example.test","historyId":18446744073709551615}`, "18446744073709551615", true},
+		{"invalid JSON", `not JSON`, "", false},
+		{"missing email", `{"historyId":"123"}`, "", false},
+		{"missing history", `{"emailAddress":"team@example.test"}`, "", false},
+		{"null history", `{"emailAddress":"team@example.test","historyId":null}`, "", false},
+		{"empty history", `{"emailAddress":"team@example.test","historyId":""}`, "", false},
+		{"invalid history", `{"emailAddress":"team@example.test","historyId":"private"}`, "", false},
+		{"fractional history", `{"emailAddress":"team@example.test","historyId":1.5}`, "", false},
+		{"negative history", `{"emailAddress":"team@example.test","historyId":-1}`, "", false},
+		{"zero history", `{"emailAddress":"team@example.test","historyId":0}`, "", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			event, err := parseGmailNotification([]byte(tt.payload))
+			if (err == nil) != tt.valid {
+				t.Fatalf("valid=%v: %v", tt.valid, err)
+			}
+			if tt.valid && (event.Email != "team@example.test" || event.HistoryID.String() != tt.history) {
+				t.Fatalf("notification changed: %+v", event)
+			}
+		})
+	}
+}
+
 func TestRetryPolicy(t *testing.T) {
 	now := time.Now()
 	for _, tt := range []struct {
